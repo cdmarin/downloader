@@ -1,9 +1,9 @@
 @echo off
-title NexDown - Descargador Local
+title ClipSaver - Descargador Local
 color 0B
 
 echo ========================================================
-echo                 Iniciando NexDown...
+echo                 Iniciando ClipSaver...
 echo ========================================================
 echo.
 

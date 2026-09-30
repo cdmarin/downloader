@@ -1,5 +1,5 @@
 {
-  "name": "nexdown",
+  "name": "clipsaver",
   "version": "1.0.0",
   "description": "Local video downloader using yt-dlp",
   "main": "server.js",
