@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+    <meta name="theme-color" content="#0b0f19">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>NexDown | Descargador Universal</title>
+    <meta name="description" content="Descarga videos y audios de cualquier plataforma fácilmente y sin publicidad.">
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="background-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+    </div>
+    
+    <nav class="top-nav">
+        <button id="mobile-btn" class="mobile-nav-btn" title="Abrir en tu móvil">
+            <i class="fa-solid fa-mobile-screen-button"></i>
+            <span>Usar en el móvil</span>
+        </button>
+    </nav>
+
+    <main class="container">
+        <header>
+            <div class="logo">
+                <i class="fa-solid fa-cloud-arrow-down"></i>
+                <h1>NexDown</h1>
+            </div>
+            <p>Pega el enlace de cualquier red social y descárgalo al instante.</p>
+        </header>
+
+        <form id="download-form" class="glass-panel">
+            <div class="input-group">
+                <i class="fa-solid fa-link input-icon"></i>
+                <input type="url" id="video-url" placeholder="Ej: Instagram, TikTok, YouTube, X (Twitter)..." required autocomplete="off">
+                <button type="submit" id="submit-btn">
+                    <span class="btn-text">Descargar</span>
+                    <i class="fa-solid fa-arrow-right btn-icon"></i>
+                    <div class="spinner"></div>
+                </button>
+            </div>
+            
+            <div class="format-selector">
+                <label class="radio-label">
+                    <input type="radio" name="format" value="mp4" checked>
+                    <span class="radio-custom"><i class="fa-solid fa-video"></i> Video (MP4)</span>
+                </label>
+                <label class="radio-label">
+                    <input type="radio" name="format" value="mp3">
+                    <span class="radio-custom"><i class="fa-solid fa-music"></i> Audio (MP3)</span>
+                </label>
+                <label class="radio-label">
+                    <input type="radio" name="format" value="m4a">
+                    <span class="radio-custom"><i class="fa-solid fa-file-audio"></i> Audio (M4A)</span>
+                </label>
+            </div>
+            
+            <div class="trim-section">
+                <button type="button" id="toggle-trim-btn" class="trim-toggle-btn">
+                    <i class="fa-solid fa-scissors"></i>
+                    <span>Recortar fragmento (opcional)</span>
+                    <i class="fa-solid fa-chevron-down trim-chevron"></i>
+                </button>
+                
+                <div id="trim-controls" class="trim-controls hidden">
+                    <div class="trim-inputs">
+                        <div class="trim-field">
+                            <label for="trim-start"><i class="fa-regular fa-clock"></i> Desde (Inicio)</label>
+                            <input type="text" id="trim-start" placeholder="00:00" autocomplete="off">
+                        </div>
+                        <div class="trim-divider">
+                            <i class="fa-solid fa-arrow-right-long"></i>
+                        </div>
+                        <div class="trim-field">
+                            <label for="trim-end"><i class="fa-regular fa-clock"></i> Hasta (Fin)</label>
+                            <input type="text" id="trim-end" placeholder="01:30" autocomplete="off">
+                        </div>
+                    </div>
+                    <small class="trim-hint">Formato <code>mm:ss</code> o segundos. Ej: <code>00:15</code> a <code>01:30</code> (déjalo vacío para descargar completo).</small>
+                </div>
+            </div>
+        </form>
+
+        <div id="result-container" class="result-container hidden">
+            <!-- Results will be injected here by JS -->
+        </div>
+    </main>
+
+    <!-- Mobile Connection Modal -->
+    <div id="mobile-modal" class="modal-backdrop hidden">
+        <div class="modal-content glass-panel">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-mobile-screen-button"></i> Conectar con tu Móvil</h3>
+                <button id="close-modal-btn" class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Escanea este código con la cámara de tu teléfono para abrir la aplicación directamente en tu móvil:</p>
+                <div class="qr-wrapper">
+                    <img id="qr-image" src="" alt="Código QR para móvil" class="qr-code">
+                </div>
+                <div class="mobile-link-box">
+                    <input type="text" id="mobile-url-input" readonly>
+                    <button id="copy-url-btn" title="Copiar enlace"><i class="fa-regular fa-copy"></i></button>
+                </div>
+                <small class="modal-hint"><i class="fa-solid fa-wifi"></i> Tu móvil y PC deben estar conectados a la misma red Wi-Fi.</small>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <p>NexDown • Compatible con Instagram, TikTok, YouTube, X y más</p>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
