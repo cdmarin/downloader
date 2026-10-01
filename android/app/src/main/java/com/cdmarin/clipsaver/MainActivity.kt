@@ -9,10 +9,13 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.ViewGroup
+import android.webkit.ValueCallback
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.window.OnBackInvokedDispatcher
 import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.core.view.ViewCompat
@@ -26,6 +29,13 @@ class MainActivity : Activity() {
 
     @Volatile
     private var pendingSharedUrl: String? = null
+
+    /** File last chosen in a page file input (the trimmer), read by [WebBridge.startTrim]. */
+    @Volatile
+    var pickedFileUri: Uri? = null
+        private set
+
+    private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -56,7 +66,8 @@ class MainActivity : Activity() {
             javaScriptEnabled = true
             domStorageEnabled = true
             allowFileAccess = false
-            allowContentAccess = false
+            // Files picked in the trimmer come from content:// documents
+            allowContentAccess = true
         }
         webView.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(
@@ -75,10 +86,67 @@ class MainActivity : Activity() {
                 return true
             }
         }
+        // <input type="file"> (trimmer): open the system picker for videos and audios
+        webView.webChromeClient = object : WebChromeClient() {
+            override fun onShowFileChooser(
+                view: WebView,
+                callback: ValueCallback<Array<Uri>>,
+                params: FileChooserParams
+            ): Boolean {
+                fileChooserCallback?.onReceiveValue(null)
+                fileChooserCallback = callback
+                val mimeTypes = params.acceptTypes
+                    .flatMap { it.split(',') }
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+                    .ifEmpty { listOf("*/*") }
+                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+                    .addCategory(Intent.CATEGORY_OPENABLE)
+                    .setType("*/*")
+                    .putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes.toTypedArray())
+                return try {
+                    @Suppress("DEPRECATION")
+                    startActivityForResult(intent, REQUEST_PICK_FILE)
+                    true
+                } catch (e: ActivityNotFoundException) {
+                    fileChooserCallback = null
+                    false
+                }
+            }
+        }
         webView.addJavascriptInterface(WebBridge(this), "ClipSaverAndroid")
         webView.loadUrl("https://${WebViewAssetLoader.DEFAULT_DOMAIN}/assets/index.html")
 
         requestNotificationPermission()
+
+        // Back goes back inside the page first (e.g. from the trimmer to the downloader)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT) {
+                handleBack()
+            }
+        }
+    }
+
+    @Deprecated("Only used before Android 13; newer versions use the callback registered in onCreate")
+    override fun onBackPressed() {
+        handleBack()
+    }
+
+    private fun handleBack() {
+        if (webView.canGoBack()) webView.goBack() else moveTaskToBack(true)
+    }
+
+    @Deprecated("Activity result API needs AndroidX Activity; this app uses the platform Activity")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode != REQUEST_PICK_FILE) {
+            @Suppress("DEPRECATION")
+            super.onActivityResult(requestCode, resultCode, data)
+            return
+        }
+        val uri = data?.data.takeIf { resultCode == RESULT_OK }
+        if (uri != null) pickedFileUri = uri
+        fileChooserCallback?.onReceiveValue(uri?.let { arrayOf(it) })
+        fileChooserCallback = null
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -120,6 +188,10 @@ class MainActivity : Activity() {
         if (text.isEmpty()) return null
         // Apps like TikTok share a sentence with the link inside it
         return Regex("https?://\\S+").find(text)?.value ?: text
+    }
+
+    private companion object {
+        const val REQUEST_PICK_FILE = 2
     }
 
     private fun requestNotificationPermission() {

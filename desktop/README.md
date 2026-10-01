@@ -7,6 +7,7 @@ ni FFmpeg). Es la misma interfaz y el mismo `server.js` que la versión de PC, e
 - Los archivos se guardan en la carpeta **Descargas**.
 - Al terminar una descarga puedes **abrir el archivo** o **mostrarlo en su carpeta**.
 - yt-dlp se actualiza solo una vez al día para seguir funcionando cuando cambian las webs.
+- Desde el menú (arriba a la izquierda) puedes **recortar** cualquier vídeo o audio del PC y ver la versión instalada.
 
 ## Descargar
 

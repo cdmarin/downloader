@@ -55,12 +55,13 @@ class DownloadService : Service() {
     }
 
     private fun buildNotification(state: DownloadEngine.NotificationState?): android.app.Notification {
-        val title = when (state?.status) {
-            "downloading" -> getString(R.string.notification_downloading)
-            "processing" -> getString(R.string.notification_processing)
+        val title = when {
+            state?.isTrim == true -> getString(R.string.notification_trimming)
+            state?.status == "downloading" -> getString(R.string.notification_downloading)
+            state?.status == "processing" -> getString(R.string.notification_processing)
             else -> getString(R.string.notification_preparing)
         }
-        val percent = state?.percent.takeIf { state?.status == "downloading" }
+        val percent = state?.percent
         val openApp = PendingIntent.getActivity(
             this,
             0,

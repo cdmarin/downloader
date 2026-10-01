@@ -19,6 +19,30 @@
     </div>
     
     <nav class="top-nav">
+        <!-- Menu: the circle spins and the options drop down -->
+        <div class="app-menu" id="app-menu">
+            <button type="button" id="menu-btn" class="menu-btn" aria-label="Menú" aria-haspopup="true" aria-expanded="false" aria-controls="menu-list">
+                <i class="fa-solid fa-bars menu-icon-open"></i>
+                <i class="fa-solid fa-xmark menu-icon-close"></i>
+            </button>
+            <ul id="menu-list" class="menu-list" role="menu">
+                <li role="none">
+                    <button type="button" role="menuitem" class="menu-item" data-action="home">
+                        <i class="fa-solid fa-cloud-arrow-down"></i> Descargar de internet
+                    </button>
+                </li>
+                <li role="none">
+                    <button type="button" role="menuitem" class="menu-item" data-action="trimmer">
+                        <i class="fa-solid fa-scissors"></i> Recortar audio o vídeo
+                    </button>
+                </li>
+                <li role="none">
+                    <button type="button" role="menuitem" class="menu-item" data-action="about">
+                        <i class="fa-solid fa-circle-info"></i> Acerca de ClipSaver
+                    </button>
+                </li>
+            </ul>
+        </div>
         <button id="mobile-btn" class="mobile-nav-btn" title="Abrir en tu móvil">
             <i class="fa-solid fa-mobile-screen-button"></i>
             <span>Usar en el móvil</span>
@@ -89,7 +113,129 @@
         <div id="result-container" class="result-container hidden">
             <!-- Results will be injected here by JS -->
         </div>
+
+        <!-- Trimmer (menu > "Recortar audio o vídeo"); trimmer.js -->
+        <section id="trimmer-view" class="tool-view hidden" aria-labelledby="trimmer-title">
+            <div class="tool-header">
+                <button type="button" class="back-btn" data-action="home" aria-label="Volver">
+                    <i class="fa-solid fa-arrow-left"></i>
+                </button>
+                <h2 id="trimmer-title"><i class="fa-solid fa-scissors"></i> Recortar audio o vídeo</h2>
+            </div>
+
+            <div class="glass-panel trimmer-panel">
+                <label id="trim-drop" class="file-drop" for="trim-file">
+                    <i class="fa-solid fa-film"></i>
+                    <span class="file-drop-title">Elige un vídeo o audio</span>
+                    <span class="file-drop-hint">MP4, MOV, MKV, WEBM, MP3, M4A, WAV…</span>
+                    <input type="file" id="trim-file" accept="video/*,audio/*">
+                </label>
+
+                <div id="trim-editor" class="trim-editor hidden">
+                    <div class="trim-file-row">
+                        <i class="fa-regular fa-file-video" id="trim-file-icon"></i>
+                        <span id="trim-file-name" class="trim-file-name"></span>
+                        <button type="button" id="trim-change-file" class="link-btn">Cambiar</button>
+                    </div>
+
+                    <div class="media-frame" id="media-frame">
+                        <video id="trim-media" playsinline preload="metadata"></video>
+                        <div class="audio-placeholder" id="audio-placeholder">
+                            <i class="fa-solid fa-music"></i>
+                        </div>
+                        <p class="media-error hidden" id="media-error">
+                            No se puede previsualizar este archivo aquí. Escribe los tiempos a mano y pulsa Recortar.
+                        </p>
+                    </div>
+
+                    <div class="player-row">
+                        <button type="button" id="play-btn" class="round-btn" aria-label="Reproducir">
+                            <i class="fa-solid fa-play"></i>
+                        </button>
+                        <span class="time-readout"><span id="current-time">00:00.000</span> / <span id="total-time">00:00.000</span></span>
+                        <button type="button" id="play-selection-btn" class="chip-btn">
+                            <i class="fa-solid fa-repeat"></i> Escuchar selección
+                        </button>
+                    </div>
+
+                    <!-- Drag the handles (or tap the bar to move the playhead) -->
+                    <div class="timeline" id="timeline">
+                        <div class="timeline-track"></div>
+                        <div class="timeline-range" id="timeline-range"></div>
+                        <div class="timeline-playhead" id="timeline-playhead"></div>
+                        <div class="timeline-handle" id="handle-start" role="slider" tabindex="0" aria-label="Inicio del recorte"></div>
+                        <div class="timeline-handle" id="handle-end" role="slider" tabindex="0" aria-label="Final del recorte"></div>
+                    </div>
+
+                    <div class="time-fields">
+                        <div class="time-field">
+                            <label for="cut-start">Inicio</label>
+                            <div class="time-input-row">
+                                <button type="button" class="nudge-btn" data-target="start" data-step="-0.1" aria-label="Inicio 0,1 s antes">−</button>
+                                <input type="text" id="cut-start" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="00:00.000">
+                                <button type="button" class="nudge-btn" data-target="start" data-step="0.1" aria-label="Inicio 0,1 s después">+</button>
+                            </div>
+                            <button type="button" class="link-btn set-here-btn" data-target="start">
+                                <i class="fa-solid fa-location-crosshairs"></i> Usar posición actual
+                            </button>
+                        </div>
+                        <div class="time-field">
+                            <label for="cut-end">Final</label>
+                            <div class="time-input-row">
+                                <button type="button" class="nudge-btn" data-target="end" data-step="-0.1" aria-label="Final 0,1 s antes">−</button>
+                                <input type="text" id="cut-end" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="00:10.000">
+                                <button type="button" class="nudge-btn" data-target="end" data-step="0.1" aria-label="Final 0,1 s después">+</button>
+                            </div>
+                            <button type="button" class="link-btn set-here-btn" data-target="end">
+                                <i class="fa-solid fa-location-crosshairs"></i> Usar posición actual
+                            </button>
+                        </div>
+                    </div>
+                    <p class="cut-summary">Duración del recorte: <strong id="cut-length">—</strong></p>
+                    <small class="trim-hint">Formato <code>mm:ss.mmm</code> (minutos, segundos y milisegundos), por ejemplo <code>00:10.500</code>. También vale <code>10.5</code> en segundos.</small>
+
+                    <div class="mode-selector" role="radiogroup" aria-label="Tipo de recorte">
+                        <label class="radio-label">
+                            <input type="radio" name="trim-mode" value="exact" checked>
+                            <span class="radio-custom"><i class="fa-solid fa-crosshairs"></i> Exacto</span>
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="trim-mode" value="fast">
+                            <span class="radio-custom"><i class="fa-solid fa-bolt"></i> Rápido</span>
+                        </label>
+                    </div>
+                    <small class="trim-hint" id="mode-hint"></small>
+
+                    <button type="button" id="cut-btn" class="primary-btn">
+                        <i class="fa-solid fa-scissors"></i> Recortar
+                    </button>
+                </div>
+            </div>
+
+            <div id="trim-result" class="result-container hidden"></div>
+        </section>
     </main>
+
+    <!-- About (menu > "Acerca de ClipSaver") -->
+    <div id="about-modal" class="modal-backdrop hidden">
+        <div class="modal-content glass-panel" role="dialog" aria-modal="true" aria-labelledby="about-title">
+            <div class="modal-header">
+                <h3 id="about-title"><i class="fa-solid fa-circle-info"></i> Acerca de ClipSaver</h3>
+                <button type="button" class="close-btn" data-close-modal aria-label="Cerrar">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="about-version">
+                    <span class="about-label">Versión instalada</span>
+                    <strong id="about-version">—</strong>
+                    <span id="about-platform" class="about-platform"></span>
+                </div>
+                <p id="about-update" class="about-update">Buscando actualizaciones…</p>
+                <a href="https://github.com/cdmarin/downloader/releases/latest" target="_blank" rel="noopener" class="chip-btn">
+                    <i class="fa-brands fa-github"></i> Ver todas las versiones
+                </a>
+            </div>
+        </div>
+    </div>
 
     <!-- Mobile Connection Modal -->
     <div id="mobile-modal" class="modal-backdrop hidden">
@@ -117,5 +263,7 @@
     </footer>
 
     <script src="script.js"></script>
+    <script src="menu.js"></script>
+    <script src="trimmer.js"></script>
 </body>
 </html>

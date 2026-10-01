@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
+import android.provider.OpenableColumns
 import android.util.Log
 import android.webkit.MimeTypeMap
 import androidx.core.content.edit
@@ -15,10 +16,12 @@ import com.yausername.youtubedl_android.YoutubeDLRequest
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
+import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import kotlin.concurrent.thread
 
 /**
  * Android counterpart of server.js: runs yt-dlp (bundled by youtubedl-android),
@@ -40,7 +43,7 @@ object DownloadEngine {
     private val executor = Executors.newCachedThreadPool()
     private val jobs = ConcurrentHashMap<String, Job>()
 
-    class Job(val id: String, val isAudio: Boolean, val trimmed: Boolean) {
+    class Job(val id: String, val isAudio: Boolean, val trimmed: Boolean, val isTrimJob: Boolean = false) {
         val createdAt = System.currentTimeMillis()
         var status = "starting"
         var completedBytes = 0L
@@ -49,6 +52,7 @@ object DownloadEngine {
         var expectedTotal: Long? = null
         var speed: Double? = null
         var eta: Long? = null
+        var percent: Double? = null // trims report progress as a percentage instead of bytes
         var result: JSONObject? = null
         var error: String? = null
         var fileUri: Uri? = null
@@ -57,7 +61,7 @@ object DownloadEngine {
         val isActive get() = status != "done" && status != "error"
     }
 
-    data class NotificationState(val status: String, val percent: Int?)
+    data class NotificationState(val status: String, val percent: Int?, val isTrim: Boolean)
 
     /** Unpacks Python/FFmpeg on first launch and keeps yt-dlp up to date (once a day). */
     fun initialize(context: Context) {
@@ -130,23 +134,29 @@ object DownloadEngine {
                 .put("totalBytes", totalBytes ?: JSONObject.NULL)
                 .put("speed", job.speed ?: JSONObject.NULL)
                 .put("eta", job.eta ?: JSONObject.NULL)
+                .put("percent", job.percent ?: JSONObject.NULL)
                 .put("result", job.result ?: JSONObject.NULL)
                 .put("error", job.error ?: JSONObject.NULL)
         }
     }
 
-    /** Most recent unfinished job, so the UI can resume it after the app is reopened. */
+    /** Most recent unfinished download, so the UI can resume it after the app is reopened. */
     fun activeJobId(): String? =
-        jobs.values.filter { synchronized(it) { it.isActive } }.maxByOrNull { it.createdAt }?.id
+        jobs.values.filter { !it.isTrimJob && synchronized(it) { it.isActive } }.maxByOrNull { it.createdAt }?.id
 
     fun notificationState(): NotificationState? {
         val job = jobs.values.filter { synchronized(it) { it.isActive } }.maxByOrNull { it.createdAt }
             ?: return null
         val snapshot = snapshot(job.id)
+        val status = snapshot.getString("status")
+        if (job.isTrimJob) {
+            val percent = synchronized(job) { job.percent }?.toInt()?.coerceIn(0, 100)
+            return NotificationState(status, percent, isTrim = true)
+        }
         val downloaded = snapshot.optLong("downloadedBytes")
         val total = snapshot.optLong("totalBytes", 0)
-        val percent = if (total > 0) (downloaded * 100 / total).toInt().coerceIn(0, 100) else null
-        return NotificationState(snapshot.getString("status"), percent)
+        val percent = if (total > 0 && status == "downloading") (downloaded * 100 / total).toInt().coerceIn(0, 100) else null
+        return NotificationState(status, percent, isTrim = false)
     }
 
     fun savedFile(jobId: String): Pair<Uri, String>? {
@@ -299,6 +309,185 @@ object DownloadEngine {
             job.streamTotal = null
         }
     }
+
+    // ----- Trimmer (menu > "Recortar audio o vídeo"): same rules as trimArgs() in server.js -----
+
+    private class AudioEncoder(val ext: String, val args: List<String>)
+
+    // Codec settings for "exact" trims of audio-only files, keyed by input extension
+    private val AUDIO_ENCODERS = mapOf(
+        "mp3" to AudioEncoder("mp3", listOf("-c:a", "libmp3lame", "-q:a", "0")),
+        "m4a" to AudioEncoder("m4a", listOf("-c:a", "aac", "-b:a", "192k")),
+        "aac" to AudioEncoder("m4a", listOf("-c:a", "aac", "-b:a", "192k")),
+        "ogg" to AudioEncoder("ogg", listOf("-c:a", "libvorbis", "-q:a", "6")),
+        "oga" to AudioEncoder("ogg", listOf("-c:a", "libvorbis", "-q:a", "6")),
+        "opus" to AudioEncoder("opus", listOf("-c:a", "libopus", "-b:a", "160k")),
+        "webm" to AudioEncoder("opus", listOf("-c:a", "libopus", "-b:a", "160k")),
+        "wav" to AudioEncoder("wav", listOf("-c:a", "pcm_s16le")),
+        "flac" to AudioEncoder("flac", listOf("-c:a", "flac"))
+    )
+    private val DEFAULT_AUDIO_ENCODER = AUDIO_ENCODERS.getValue("m4a")
+    private val FFMPEG_OUT_TIME = Regex("^out_time_(?:us|ms)=(\\d+)")
+
+    /** Cuts [source] (the file picked in the page) between payload.start and payload.end. */
+    fun startTrim(context: Context, source: Uri?, payload: JSONObject): JSONObject {
+        if (source == null) {
+            return JSONObject().put("error", "Vuelve a elegir el archivo.")
+        }
+        val start = parseTimeInput(payload.optString("start")) ?: 0.0
+        val end = parseTimeInput(payload.optString("end"))
+        if (end != null && start >= end) {
+            return JSONObject().put("error", "El inicio debe ser anterior al final.")
+        }
+        val hasVideo = payload.optString("hasVideo") == "1"
+        val fast = payload.optString("mode") == "fast"
+        val mediaDuration = payload.optString("mediaDuration").toDoubleOrNull()
+
+        val job = Job(UUID.randomUUID().toString(), isAudio = !hasVideo, trimmed = true, isTrimJob = true)
+        jobs[job.id] = job
+        Log.i(TAG, "Trimming $source: $start - ${end ?: "end"} (${if (fast) "fast" else "exact"})")
+
+        val appContext = context.applicationContext
+        DownloadService.start(appContext)
+        executor.execute {
+            val duration = end?.let { it - start } ?: mediaDuration?.let { it - start }
+            runTrim(appContext, job, source, start, end, fast, hasVideo, duration)
+        }
+        return JSONObject().put("jobId", job.id)
+    }
+
+    private fun runTrim(
+        context: Context,
+        job: Job,
+        source: Uri,
+        start: Double,
+        end: Double?,
+        fast: Boolean,
+        hasVideo: Boolean,
+        expectedDuration: Double?
+    ) {
+        val jobDir = File(context.noBackupFilesDir, "jobs/${job.id}")
+        try {
+            ready.await()
+            initError?.let { throw EngineInitException(it) }
+            jobDir.mkdirs()
+
+            // FFmpeg needs a real file, so the picked document is copied first
+            val displayName = displayName(context, source)?.replace('/', '_') ?: "archivo"
+            val inputExt = displayName.substringAfterLast('.', "").lowercase(Locale.ROOT).take(10)
+            val input = File(jobDir, if (inputExt.isEmpty()) "input" else "input.$inputExt")
+            val stream = context.contentResolver.openInputStream(source) ?: throw IOException("Could not open $source")
+            stream.use { inp -> input.outputStream().use { inp.copyTo(it) } }
+
+            val baseName = (if ('.' in displayName) displayName.substringBeforeLast('.') else displayName)
+                .ifBlank { "archivo" }
+            val ext = trimOutputExt(fast, hasVideo, inputExt)
+            val output = File(jobDir, "$baseName (recorte).$ext")
+            synchronized(job) {
+                job.status = "processing"
+                job.percent = 0.0
+            }
+            runFfmpeg(context, trimArgs(input, output, start, end?.let { it - start }, fast, hasVideo, inputExt), job, expectedDuration)
+
+            val mimeType = mimeTypeFor(output, !hasVideo)
+            val uri = saveToDownloads(context, output, mimeType)
+            val what = if (hasVideo) "Vídeo" else "Audio"
+            synchronized(job) {
+                job.fileUri = uri
+                job.mimeType = mimeType
+                job.percent = 100.0
+                job.result = JSONObject()
+                    .put("success", true)
+                    .put("message", "$what recortado con éxito. Guardado en Descargas/$DOWNLOADS_SUBFOLDER.")
+                    .put("filename", output.name)
+                    .put("jobId", job.id)
+                job.status = "done"
+            }
+        } catch (e: Throwable) {
+            Log.e(TAG, "Trim error", e)
+            synchronized(job) {
+                job.error = if (e is EngineInitException) {
+                    "No se pudo iniciar FFmpeg. Prueba a reinstalar la app."
+                } else {
+                    "No se pudo recortar el archivo. Comprueba que sea un audio o vídeo válido."
+                }
+                job.status = "error"
+            }
+        } finally {
+            jobDir.deleteRecursively()
+        }
+    }
+
+    private fun trimOutputExt(fast: Boolean, hasVideo: Boolean, inputExt: String): String = when {
+        fast -> inputExt.ifEmpty { if (hasVideo) "mp4" else "m4a" }
+        hasVideo -> "mp4"
+        else -> (AUDIO_ENCODERS[inputExt] ?: DEFAULT_AUDIO_ENCODER).ext
+    }
+
+    private fun trimArgs(
+        input: File,
+        output: File,
+        start: Double,
+        duration: Double?,
+        fast: Boolean,
+        hasVideo: Boolean,
+        inputExt: String
+    ): List<String> {
+        val args = mutableListOf(
+            "-hide_banner", "-nostdin", "-y", "-progress", "pipe:1", "-nostats",
+            "-ss", seconds(start), "-i", input.absolutePath
+        )
+        if (duration != null) args += listOf("-t", seconds(duration))
+        args += when {
+            // Copies the streams as they are: instant, but the cut lands on the nearest keyframe
+            fast -> listOf("-map", "0:v?", "-map", "0:a?", "-c", "copy", "-avoid_negative_ts", "make_zero")
+            hasVideo -> listOf(
+                "-map", "0:v:0", "-map", "0:a?", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+                "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart"
+            )
+            else -> listOf("-map", "0:a:0", "-vn") + (AUDIO_ENCODERS[inputExt] ?: DEFAULT_AUDIO_ENCODER).args
+        }
+        args += output.absolutePath
+        return args
+    }
+
+    // Runs the FFmpeg bundled by youtubedl-android the same way the library does for yt-dlp
+    private fun runFfmpeg(context: Context, args: List<String>, job: Job, durationSec: Double?) {
+        val ffmpeg = File(context.applicationInfo.nativeLibraryDir, "libffmpeg.so")
+        val packages = File(context.noBackupFilesDir, "youtubedl-android/packages")
+        val builder = ProcessBuilder(listOf(ffmpeg.absolutePath) + args)
+        builder.environment()["LD_LIBRARY_PATH"] =
+            listOf("python", "ffmpeg").joinToString(":") { File(packages, "$it/usr/lib").absolutePath }
+        val process = builder.start()
+
+        val errorTail = StringBuilder()
+        val stderrReader = thread(name = "ffmpeg-stderr") {
+            process.errorStream.bufferedReader().forEachLine { line ->
+                synchronized(errorTail) {
+                    errorTail.append(line).append('\n')
+                    if (errorTail.length > 4000) errorTail.delete(0, errorTail.length - 4000)
+                }
+            }
+        }
+        process.inputStream.bufferedReader().forEachLine { line ->
+            val micros = FFMPEG_OUT_TIME.find(line)?.groupValues?.get(1)?.toLongOrNull() ?: return@forEachLine
+            if (durationSec != null && durationSec > 0) {
+                synchronized(job) { job.percent = (micros / 1e6 / durationSec * 100).coerceIn(0.0, 100.0) }
+            }
+        }
+        val exitCode = process.waitFor()
+        stderrReader.join()
+        if (exitCode != 0) {
+            throw IOException("ffmpeg exited with code $exitCode: ${synchronized(errorTail) { errorTail.takeLast(600) }}")
+        }
+    }
+
+    private fun displayName(context: Context, uri: Uri): String? =
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0) else null
+        }
+
+    private fun seconds(value: Double): String = String.format(Locale.US, "%.3f", value)
 
     private fun saveToDownloads(context: Context, file: File, mimeType: String): Uri {
         val resolver = context.contentResolver

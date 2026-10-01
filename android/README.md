@@ -9,6 +9,7 @@ y ejecuta yt-dlp, Python y FFmpeg dentro de la app gracias a
 - Puedes compartir un enlace desde YouTube, TikTok, Instagram... y elegir **ClipSaver**.
 - La descarga sigue en segundo plano y muestra su progreso en una notificación.
 - yt-dlp se actualiza solo una vez al día para seguir funcionando cuando cambian las webs.
+- Desde el menú (arriba a la izquierda) puedes **recortar** cualquier vídeo o audio del móvil y ver la versión instalada.
 - Requiere Android 10 o superior.
 
 ## Descargar la APK

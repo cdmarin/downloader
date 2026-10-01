@@ -29,8 +29,9 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      # A tag like v1.5 becomes the app version shown in "Acerca de"
       - name: Build APKs
-        run: ./gradlew assembleRelease --stacktrace
+        run: ./gradlew assembleRelease --stacktrace ${{ startsWith(github.ref, 'refs/tags/v') && format('-PappVersion={0}', github.ref_name) || '' }}
 
       - name: Rename APKs
         run: |

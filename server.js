@@ -18,6 +18,18 @@ try {
     ffmpegPath = null;
 }
 
+// Version shown in "Acerca de" for the PC version: the latest release tag of this copy
+// of the repository, or package.json when it was downloaded without git
+function pcVersion() {
+    try {
+        return require('child_process').execFileSync('git', ['describe', '--tags', '--abbrev=0'], {
+            cwd: __dirname, stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000, windowsHide: true
+        }).toString().trim().replace(/^v/, '');
+    } catch (e) {
+        return require('./package.json').version;
+    }
+}
+
 // Defaults for `node server.js`; the desktop app (desktop/main.js) overrides them via start()
 const config = {
     port: 3000,
@@ -27,7 +39,9 @@ const config = {
     ffmpegPath,
     jsRuntimes: 'node',
     childEnv: process.env,
-    desktopApp: false
+    desktopApp: false,
+    appVersion: pcVersion(),
+    platform: 'PC'
 };
 
 const app = express();
@@ -51,12 +65,14 @@ function getLocalIp() {
 
 // Endpoint to provide network info to the frontend
 app.get('/api/info', (req, res) => {
+    const app = { version: config.appVersion, platform: config.platform };
     if (config.desktopApp) {
         // The desktop app only listens on this PC, so there is no mobile link to offer
-        return res.json({ desktopApp: true });
+        return res.json({ desktopApp: true, app });
     }
     const ip = getLocalIp();
     res.json({
+        app,
         localIp: ip,
         port: config.port,
         mobileUrl: `http://${ip}:${config.port}`
@@ -142,6 +158,7 @@ function jobSnapshot(job) {
         totalBytes,
         speed: job.speed,
         eta: job.eta,
+        percent: job.percent ?? null, // trims/conversions report progress as a percentage instead of bytes
         result: job.result,
         error: job.error
     };
@@ -348,6 +365,178 @@ app.post('/api/download', (req, res) => {
             job.error = 'No se pudo descargar el archivo. Verifica la URL o tu conexión.';
             job.status = 'error';
         } finally {
+            setTimeout(() => jobs.delete(job.id), JOB_TTL_MS);
+        }
+    })();
+});
+
+// ---------------------------------------------------------------------------
+// Trimmer: cuts a local audio/video file with FFmpeg (menu > "Recortar audio o vídeo").
+// The browser uploads the file (it may be on a phone using the PC version over Wi-Fi);
+// the desktop app sends its path instead, since the file is already on this PC.
+
+const uploadsFolder = path.join(os.tmpdir(), 'clipsaver-uploads');
+
+// Codec settings for "exact" trims of audio-only files, keyed by input extension
+const AUDIO_ENCODERS = {
+    mp3: { ext: 'mp3', args: ['-c:a', 'libmp3lame', '-q:a', '0'] },
+    m4a: { ext: 'm4a', args: ['-c:a', 'aac', '-b:a', '192k'] },
+    aac: { ext: 'm4a', args: ['-c:a', 'aac', '-b:a', '192k'] },
+    ogg: { ext: 'ogg', args: ['-c:a', 'libvorbis', '-q:a', '6'] },
+    oga: { ext: 'ogg', args: ['-c:a', 'libvorbis', '-q:a', '6'] },
+    opus: { ext: 'opus', args: ['-c:a', 'libopus', '-b:a', '160k'] },
+    webm: { ext: 'opus', args: ['-c:a', 'libopus', '-b:a', '160k'] },
+    wav: { ext: 'wav', args: ['-c:a', 'pcm_s16le'] },
+    flac: { ext: 'flac', args: ['-c:a', 'flac'] }
+};
+
+// Same rules as DownloadEngine.trimOutputExt()/trimArgs() in the Android app
+function trimOutputExt(mode, hasVideo, inputExt) {
+    if (mode === 'fast') return inputExt || (hasVideo ? 'mp4' : 'm4a');
+    if (hasVideo) return 'mp4';
+    return (AUDIO_ENCODERS[inputExt] || AUDIO_ENCODERS.m4a).ext;
+}
+
+function trimArgs({ input, output, start, duration, mode, hasVideo, inputExt }) {
+    const args = ['-hide_banner', '-nostdin', '-y', '-progress', 'pipe:1', '-nostats', '-ss', String(start), '-i', input];
+    if (duration !== null) args.push('-t', String(duration));
+    if (mode === 'fast') {
+        // Copies the streams as they are: instant, but the cut lands on the nearest keyframe
+        args.push('-map', '0:v?', '-map', '0:a?', '-c', 'copy', '-avoid_negative_ts', 'make_zero');
+    } else if (hasVideo) {
+        args.push('-map', '0:v:0', '-map', '0:a?', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20',
+            '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart');
+    } else {
+        args.push('-map', '0:a:0', '-vn', ...(AUDIO_ENCODERS[inputExt] || AUDIO_ENCODERS.m4a).args);
+    }
+    args.push(output);
+    return args;
+}
+
+// "Mi vídeo.mp4" -> "Mi vídeo (recorte).mp4", or "(recorte 2)" if that name is taken
+function uniqueOutputPath(folder, baseName, ext) {
+    let candidate = path.join(folder, `${baseName} (recorte).${ext}`);
+    for (let i = 2; fs.existsSync(candidate); i++) {
+        candidate = path.join(folder, `${baseName} (recorte ${i}).${ext}`);
+    }
+    return candidate;
+}
+
+function runFfmpeg(args, job, durationSec) {
+    return new Promise((resolve, reject) => {
+        const child = spawn(config.ffmpegPath || 'ffmpeg', args, { windowsHide: true });
+        let stderr = '';
+        let buffer = '';
+        child.stdout.on('data', chunk => {
+            buffer += chunk.toString();
+            const lines = buffer.split(/\r?\n/);
+            buffer = lines.pop();
+            for (const line of lines) {
+                const match = /^out_time_(?:us|ms)=(\d+)/.exec(line);
+                if (match && durationSec > 0) {
+                    job.percent = Math.min(100, (Number(match[1]) / 1e6 / durationSec) * 100);
+                }
+            }
+        });
+        child.stderr.on('data', chunk => { stderr = (stderr + chunk.toString()).slice(-4000); });
+        child.on('error', reject);
+        child.on('close', code => {
+            if (code === 0) resolve();
+            else reject(new Error(stderr || `ffmpeg exited with code ${code}`));
+        });
+    });
+}
+
+function newJob() {
+    const job = {
+        id: crypto.randomUUID(),
+        status: 'starting',
+        completedBytes: 0,
+        streamBytes: 0,
+        streamTotal: null,
+        useExpectedTotal: false,
+        expectedTotal: null,
+        speed: null,
+        eta: null,
+        percent: null,
+        result: null,
+        error: null
+    };
+    jobs.set(job.id, job);
+    return job;
+}
+
+// Body: the raw file (browser) or nothing (desktop app, which passes ?path=)
+app.post('/api/trim', async (req, res) => {
+    const { name, path: localPath, mode } = req.query;
+    const hasVideo = req.query.hasVideo === '1';
+    const start = parseTimeInput(req.query.start) ?? 0;
+    const end = parseTimeInput(req.query.end);
+
+    if (end !== null && start >= end) {
+        return res.status(400).json({ error: 'El inicio debe ser anterior al final.' });
+    }
+
+    let input;
+    let uploaded = false;
+    let originalName = name;
+    if (localPath) {
+        // Only the desktop app (listening on 127.0.0.1) may point at files on disk
+        if (!config.desktopApp || !fs.existsSync(localPath)) {
+            return res.status(400).json({ error: 'No se encuentra el archivo.' });
+        }
+        input = localPath;
+        originalName = path.basename(localPath);
+    } else {
+        fs.mkdirSync(uploadsFolder, { recursive: true });
+        input = path.join(uploadsFolder, `${crypto.randomUUID()}${path.extname(String(name || '')).slice(0, 10)}`);
+        try {
+            await new Promise((resolve, reject) => {
+                const out = fs.createWriteStream(input);
+                req.pipe(out);
+                out.on('finish', resolve);
+                out.on('error', reject);
+                req.on('error', reject);
+            });
+        } catch (e) {
+            fs.rm(input, { force: true }, () => {});
+            return res.status(500).json({ error: 'No se pudo recibir el archivo.' });
+        }
+        uploaded = true;
+    }
+
+    const safeName = path.basename(String(originalName || 'archivo'));
+    const inputExt = path.extname(safeName).slice(1).toLowerCase();
+    const baseName = path.basename(safeName, path.extname(safeName)) || 'archivo';
+    const duration = end !== null ? end - start : null;
+    const job = newJob();
+    res.json({ jobId: job.id });
+
+    (async () => {
+        try {
+            fs.mkdirSync(config.downloadsFolder, { recursive: true });
+            const output = uniqueOutputPath(config.downloadsFolder, baseName, trimOutputExt(mode, hasVideo, inputExt));
+            const args = trimArgs({ input, output, start, duration, mode, hasVideo, inputExt });
+            job.status = 'processing';
+            job.percent = 0;
+            console.log(`Trimming ${safeName}: ${start}s - ${end ?? 'end'} (${mode === 'fast' ? 'fast' : 'exact'})`);
+            await runFfmpeg(args, job, duration ?? Number(req.query.mediaDuration) - start);
+
+            const filename = path.basename(output);
+            job.percent = 100;
+            job.result = {
+                success: true,
+                message: hasVideo ? 'Vídeo recortado con éxito.' : 'Audio recortado con éxito.',
+                filename,
+                downloadUrl: `/api/file?name=${encodeURIComponent(filename)}`
+            };
+            job.status = 'done';
+        } catch (error) {
+            console.error('Trim error:', error.message);
+            job.error = 'No se pudo recortar el archivo. Comprueba que sea un audio o vídeo válido.';
+            job.status = 'error';
+        } finally {
+            if (uploaded) fs.rm(input, { force: true }, () => {});
             setTimeout(() => jobs.delete(job.id), JOB_TTL_MS);
         }
     })();

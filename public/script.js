@@ -437,39 +437,75 @@ document.addEventListener('DOMContentLoaded', () => {
         })[c]);
     }
 
-    function showSuccess(data) {
-        const filename = escapeHtml(data.filename || 'Archivo descargado');
-        const downloadUrl = data.downloadUrl;
-        const isAudio = /\.(mp3|m4a|wav|aac|ogg|opus|flac)$/i.test(filename);
-        const fileIcon = isAudio ? 'fa-file-audio' : 'fa-file-video';
-
-        let downloadButtonHtml = '';
+    // Buttons to open/save a finished file, depending on where the app runs.
+    // Shared with the trimmer (trimmer.js) through window.ClipSaverUI.
+    function fileActionsHtml(data) {
         if (androidBridge && data.jobId) {
-            downloadButtonHtml = `
-                <button class="download-file-btn" onclick="ClipSaverAndroid.openFile('${escapeHtml(data.jobId)}')">
+            return `
+                <button type="button" class="download-file-btn" data-file-action="open">
                     <i class="fa-solid fa-play"></i>
                     Abrir archivo
                 </button>
             `;
-        } else if (desktopBridge && data.filename) {
-            downloadButtonHtml = `
-                <button type="button" class="download-file-btn" data-desktop-action="open">
+        }
+        if (desktopBridge && data.filename) {
+            return `
+                <button type="button" class="download-file-btn" data-file-action="open">
                     <i class="fa-solid fa-play"></i>
                     Abrir archivo
                 </button>
-                <button type="button" class="try-again-btn" data-desktop-action="show">
+                <button type="button" class="try-again-btn" data-file-action="show">
                     <i class="fa-regular fa-folder-open"></i>
                     Mostrar en carpeta
                 </button>
             `;
-        } else if (downloadUrl) {
-            downloadButtonHtml = `
-                <a href="${downloadUrl}" class="download-file-btn" download>
+        }
+        if (data.downloadUrl) {
+            return `
+                <a href="${escapeHtml(data.downloadUrl)}" class="download-file-btn" download>
                     <i class="fa-solid fa-download"></i>
                     Guardar en este dispositivo
                 </a>
             `;
         }
+        return '';
+    }
+
+    function bindFileActions(container, data) {
+        container.querySelectorAll('[data-file-action]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const open = btn.dataset.fileAction === 'open';
+                if (androidBridge) androidBridge.openFile(data.jobId);
+                else if (open) desktopBridge.openFile(data.filename);
+                else desktopBridge.showInFolder(data.filename);
+            });
+        });
+
+        // The file is served from the PC's Downloads folder: if it was deleted or moved there,
+        // say so instead of letting the browser fail silently
+        const saveLink = container.querySelector('a.download-file-btn');
+        if (saveLink) {
+            saveLink.addEventListener('click', async (e) => {
+                e.preventDefault();
+                let available = false;
+                try {
+                    available = (await fetch(data.downloadUrl, { method: 'HEAD' })).ok;
+                } catch (err) { /* server unreachable */ }
+                if (available) {
+                    window.location.href = data.downloadUrl;
+                } else {
+                    container.querySelector('.result-card p').textContent =
+                        'El archivo ya no está en la carpeta Descargas del PC (se borró o se movió). Vuelve a descargarlo.';
+                    saveLink.remove();
+                }
+            });
+        }
+    }
+
+    function showSuccess(data) {
+        const filename = escapeHtml(data.filename || 'Archivo descargado');
+        const isAudio = /\.(mp3|m4a|wav|aac|ogg|opus|flac)$/i.test(filename);
+        const fileIcon = isAudio ? 'fa-file-audio' : 'fa-file-video';
 
         setResult(`
             <div class="result-card glass-panel">
@@ -482,38 +518,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     <i class="fa-regular ${fileIcon}"></i> ${filename}
                 </div>
                 <div class="action-buttons">
-                    ${downloadButtonHtml}
+                    ${fileActionsHtml(data)}
                     <button class="try-again-btn" onclick="resetApp()">Descargar otro</button>
                 </div>
             </div>
         `);
-        if (desktopBridge && data.filename) {
-            resultContainer.querySelectorAll('[data-desktop-action]').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    if (btn.dataset.desktopAction === 'open') desktopBridge.openFile(data.filename);
-                    else desktopBridge.showInFolder(data.filename);
-                });
-            });
-        }
-        // The file is served from the PC's Downloads folder: if it was deleted or moved there,
-        // say so instead of letting the browser fail silently
-        const saveLink = resultContainer.querySelector('a.download-file-btn');
-        if (saveLink) {
-            saveLink.addEventListener('click', async (e) => {
-                e.preventDefault();
-                let available = false;
-                try {
-                    available = (await fetch(downloadUrl, { method: 'HEAD' })).ok;
-                } catch (err) { /* server unreachable */ }
-                if (available) {
-                    window.location.href = downloadUrl;
-                } else {
-                    resultContainer.querySelector('.result-card p').textContent =
-                        'El archivo ya no está en la carpeta Descargas del PC (se borró o se movió). Vuelve a descargarlo.';
-                    saveLink.remove();
-                }
-            });
-        }
+        bindFileActions(resultContainer, data);
     }
 
     function showError(message) {
@@ -546,6 +556,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const activeJobId = androidBridge.activeJobId();
         if (activeJobId) resumeJob(activeJobId);
     }
+
+    window.ClipSaverUI = { androidBridge, desktopBridge, escapeHtml, fileActionsHtml, bindFileActions };
 
     // Expose resetApp globally for inline onclick handlers
     window.resetApp = function() {

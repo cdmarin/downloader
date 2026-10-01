@@ -13,8 +13,14 @@ android {
         applicationId = "com.cdmarin.clipsaver"
         minSdk = 29
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.1"
+        // Release builds get their version from the tag (-PappVersion=v1.5 -> "1.5", code 10500);
+        // local builds keep the fallback values
+        val tagVersion = (findProperty("appVersion") as String?)?.removePrefix("v")
+        versionName = tagVersion ?: "1.1"
+        versionCode = tagVersion?.let { version ->
+            val parts = version.split('.').map { it.toIntOrNull() ?: 0 } + listOf(0, 0, 0)
+            parts[0] * 10000 + parts[1] * 100 + parts[2]
+        } ?: 2
     }
 
     // Fixed key so every build (local or GitHub Actions) can update the installed app.

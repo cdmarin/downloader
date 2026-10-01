@@ -69,7 +69,9 @@ async function createWindow() {
         // when ELECTRON_RUN_AS_NODE is set, so the user does not need Node installed
         jsRuntimes: `node:${process.execPath}`,
         childEnv: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
-        desktopApp: true
+        desktopApp: true,
+        appVersion: app.getVersion(),
+        platform: 'Windows'
     });
     const appUrl = `http://127.0.0.1:${server.address().port}/`;
 

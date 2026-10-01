@@ -19,6 +19,16 @@ class WebBridge(private val activity: MainActivity) {
             JSONObject().put("error", "Error al procesar la descarga.").toString()
         }
 
+    /** Trims the file last picked in the page (trimmer.js); progress is read with [getProgress]. */
+    @JavascriptInterface
+    fun startTrim(payload: String): String =
+        try {
+            DownloadEngine.startTrim(activity, activity.pickedFileUri, JSONObject(payload)).toString()
+        } catch (e: Exception) {
+            Log.e("ClipSaver", "Could not start trim", e)
+            JSONObject().put("error", "Error al preparar el recorte.").toString()
+        }
+
     @JavascriptInterface
     fun getProgress(jobId: String): String = DownloadEngine.snapshot(jobId).toString()
 
@@ -27,6 +37,10 @@ class WebBridge(private val activity: MainActivity) {
 
     @JavascriptInterface
     fun consumeSharedUrl(): String = activity.consumeSharedUrl().orEmpty()
+
+    @JavascriptInterface
+    fun appVersion(): String =
+        activity.packageManager.getPackageInfo(activity.packageName, 0).versionName.orEmpty()
 
     @JavascriptInterface
     fun openFile(jobId: String) {

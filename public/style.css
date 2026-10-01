@@ -74,7 +74,8 @@ body {
 /* Top Nav */
 .top-nav {
     display: flex;
-    justify-content: flex-end;
+    justify-content: space-between;
+    align-items: flex-start;
     padding: 1.5rem 2rem 0 2rem;
     z-index: 10;
 }
@@ -986,4 +987,701 @@ footer p {
 .android-app .mobile-nav-btn,
 .desktop-app .mobile-nav-btn {
     display: none;
+}
+
+/* ===== Menu (top left): the circle spins and the options drop down ===== */
+.app-menu {
+    position: relative;
+    z-index: 50;
+}
+
+.menu-btn {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    border: 1px solid var(--glass-border);
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    color: var(--text-main);
+    font-size: 1.1rem;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.3s, border-color 0.3s, box-shadow 0.3s;
+}
+
+.menu-btn i {
+    grid-area: 1 / 1;
+    transition: opacity 0.25s, transform 0.45s;
+}
+
+.menu-icon-close {
+    opacity: 0;
+    transform: scale(0.5);
+}
+
+.menu-btn:hover {
+    border-color: var(--accent-1);
+    box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+}
+
+.app-menu.open .menu-btn {
+    transform: rotate(180deg);
+    background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+    border-color: transparent;
+    box-shadow: 0 6px 20px rgba(236, 72, 153, 0.35);
+}
+
+.app-menu.open .menu-icon-open {
+    opacity: 0;
+    transform: scale(0.5);
+}
+
+.app-menu.open .menu-icon-close {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.menu-list {
+    list-style: none;
+    position: absolute;
+    top: calc(100% + 0.6rem);
+    left: 0;
+    min-width: 250px;
+    max-width: calc(100vw - 2rem);
+    padding: 0.4rem;
+    border-radius: 16px;
+    background: rgba(17, 24, 39, 0.95);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    transform-origin: top left;
+    transform: translateY(-8px) scaleY(0.6);
+    opacity: 0;
+    visibility: hidden;
+    transition: transform 0.3s ease, opacity 0.25s ease, visibility 0.3s;
+}
+
+.app-menu.open .menu-list {
+    transform: none;
+    opacity: 1;
+    visibility: visible;
+}
+
+.menu-list li {
+    opacity: 0;
+    transform: translateY(-6px);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.app-menu.open .menu-list li {
+    opacity: 1;
+    transform: none;
+}
+
+.app-menu.open .menu-list li:nth-child(2) { transition-delay: 0.05s; }
+.app-menu.open .menu-list li:nth-child(3) { transition-delay: 0.1s; }
+.app-menu.open .menu-list li:nth-child(4) { transition-delay: 0.15s; }
+
+.menu-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.8rem 0.9rem;
+    border: none;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text-main);
+    font: inherit;
+    font-size: 0.95rem;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+}
+
+.menu-item i {
+    width: 1.2rem;
+    text-align: center;
+    color: var(--accent-1);
+}
+
+.menu-item:hover,
+.menu-item:focus-visible {
+    background: rgba(99, 102, 241, 0.18);
+    outline: none;
+}
+
+/* ===== Tool pages (they replace the downloader while open) ===== */
+.tool-open header,
+.tool-open #download-form,
+.tool-open #result-container {
+    display: none;
+}
+
+.tool-open .container {
+    justify-content: flex-start;
+}
+
+.tool-view {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+.tool-view.hidden {
+    display: none;
+}
+
+.tool-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.tool-header h2 {
+    font-size: clamp(1.2rem, 4.5vw, 1.6rem);
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.tool-header h2 i {
+    color: var(--accent-2);
+}
+
+.back-btn,
+.round-btn {
+    flex-shrink: 0;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    border: 1px solid var(--glass-border);
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-main);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    font-size: 1rem;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.back-btn:hover,
+.round-btn:hover {
+    background: rgba(99, 102, 241, 0.25);
+    border-color: var(--accent-1);
+}
+
+.round-btn {
+    background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+    border: none;
+}
+
+.trimmer-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.trimmer-panel:hover {
+    transform: none; /* the panel holds draggable controls: do not let it move */
+}
+
+.file-drop {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 2.5rem 1rem;
+    border: 2px dashed rgba(255, 255, 255, 0.15);
+    border-radius: 16px;
+    cursor: pointer;
+    text-align: center;
+    transition: border-color 0.2s, background 0.2s;
+}
+
+.file-drop:hover,
+.file-drop.dragging {
+    border-color: var(--accent-1);
+    background: rgba(99, 102, 241, 0.08);
+}
+
+.file-drop > i {
+    font-size: 2.2rem;
+    color: var(--accent-1);
+}
+
+.file-drop-title {
+    font-weight: 700;
+    font-size: 1.05rem;
+}
+
+.file-drop-hint {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.file-drop input,
+.file-drop.hidden,
+.trim-editor.hidden {
+    display: none;
+}
+
+.trim-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    min-width: 0;
+}
+
+.trim-file-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    min-width: 0;
+}
+
+.trim-file-row > i {
+    color: var(--accent-1);
+    font-size: 1.1rem;
+}
+
+.trim-file-name {
+    flex: 1;
+    min-width: 0;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.link-btn {
+    background: none;
+    border: none;
+    color: #a5b4fc;
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0.25rem 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.link-btn:hover {
+    color: white;
+}
+
+.media-frame {
+    position: relative;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #000;
+    display: grid;
+    place-items: center;
+}
+
+.media-frame video {
+    display: block;
+    width: 100%;
+    max-height: 45vh;
+    max-height: 45dvh;
+    background: #000;
+}
+
+.audio-placeholder {
+    display: none;
+}
+
+.media-frame.audio-only video {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+}
+
+.media-frame.audio-only .audio-placeholder {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    height: 120px;
+    font-size: 2.5rem;
+    color: var(--accent-1);
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(236, 72, 153, 0.15));
+}
+
+.media-error {
+    padding: 0.75rem 1rem;
+    font-size: 0.85rem;
+    color: #fca5a5;
+    text-align: center;
+}
+
+.media-error.hidden {
+    display: none;
+}
+
+.player-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.time-readout {
+    font-variant-numeric: tabular-nums;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    flex: 1;
+}
+
+.time-readout span:first-child {
+    color: var(--text-main);
+    font-weight: 600;
+}
+
+.chip-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.55rem 1rem;
+    border-radius: 50px;
+    border: 1px solid var(--glass-border);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-main);
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.chip-btn:hover {
+    background: rgba(99, 102, 241, 0.2);
+    border-color: var(--accent-1);
+}
+
+/* Timeline: wide invisible hit area, thin visible track */
+.timeline {
+    position: relative;
+    height: 48px;
+    margin: 0 12px;
+    touch-action: none;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.timeline.disabled {
+    opacity: 0.4;
+    pointer-events: none;
+}
+
+.timeline-track,
+.timeline-range {
+    position: absolute;
+    top: 50%;
+    height: 10px;
+    margin-top: -5px;
+    border-radius: 5px;
+}
+
+.timeline-track {
+    left: 0;
+    right: 0;
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.timeline-range {
+    background: linear-gradient(90deg, var(--accent-1), var(--accent-2));
+    box-shadow: 0 0 12px rgba(236, 72, 153, 0.35);
+}
+
+.timeline-playhead {
+    position: absolute;
+    top: 6px;
+    bottom: 6px;
+    width: 2px;
+    margin-left: -1px;
+    background: white;
+    border-radius: 1px;
+    pointer-events: none;
+}
+
+.timeline-handle {
+    position: absolute;
+    top: 50%;
+    width: 22px;
+    height: 22px;
+    margin: -11px 0 0 -11px;
+    border-radius: 50%;
+    background: white;
+    border: 3px solid var(--accent-1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+    pointer-events: none; /* the timeline decides which handle a press grabs */
+    transition: transform 0.15s;
+}
+
+#handle-end {
+    border-color: var(--accent-2);
+}
+
+.timeline-handle:focus-visible {
+    outline: none;
+    transform: scale(1.25);
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.4);
+}
+
+.timeline.dragging .timeline-handle:focus {
+    transform: scale(1.25);
+}
+
+.time-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+}
+
+.time-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    min-width: 0;
+}
+
+.time-field label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.time-input-row {
+    display: flex;
+    align-items: stretch;
+    gap: 0.3rem;
+}
+
+.time-input-row input {
+    flex: 1;
+    min-width: 0;
+    width: 100%;
+    padding: 0.6rem 0.3rem;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(0, 0, 0, 0.3);
+    color: var(--text-main);
+    font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+    font-size: 16px; /* no auto-zoom on phones */
+    text-align: center;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.time-input-row input:focus {
+    border-color: var(--accent-1);
+    box-shadow: 0 0 8px rgba(99, 102, 241, 0.3);
+}
+
+.time-input-row input.invalid {
+    border-color: #ef4444;
+    animation: shake 0.3s;
+}
+
+@keyframes shake {
+    25% { transform: translateX(-4px); }
+    75% { transform: translateX(4px); }
+}
+
+.nudge-btn {
+    flex-shrink: 0;
+    width: 34px;
+    border-radius: 8px;
+    border: 1px solid var(--glass-border);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-main);
+    font-size: 1.1rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.nudge-btn:hover {
+    background: rgba(99, 102, 241, 0.25);
+}
+
+.set-here-btn {
+    align-self: flex-start;
+    font-size: 0.78rem;
+}
+
+.cut-summary {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+.cut-summary strong {
+    color: var(--text-main);
+    font-variant-numeric: tabular-nums;
+}
+
+.trimmer-panel .trim-hint {
+    margin-top: -0.4rem;
+}
+
+.mode-selector {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+}
+
+.mode-selector .radio-custom {
+    width: 100%;
+    justify-content: center;
+}
+
+.primary-btn {
+    background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+    color: white;
+    border: none;
+    border-radius: 12px;
+    padding: 1rem;
+    min-height: 50px;
+    font: inherit;
+    font-size: 1.05rem;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    transition: opacity 0.2s, transform 0.2s;
+}
+
+.primary-btn:hover:not(:disabled) {
+    opacity: 0.92;
+}
+
+.primary-btn:active:not(:disabled) {
+    transform: scale(0.98);
+}
+
+/* ===== About ===== */
+.about-version {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.about-label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.about-version strong {
+    font-size: 2rem;
+    background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.about-platform {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+
+.about-update {
+    padding: 0.75rem 1rem;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    width: 100%;
+}
+
+.about-update.up-to-date {
+    color: #6ee7b7;
+}
+
+.about-update.has-update {
+    color: white;
+    background: rgba(236, 72, 153, 0.15);
+    border: 1px solid rgba(236, 72, 153, 0.4);
+}
+
+.update-link {
+    display: inline-block;
+    margin-left: 0.4rem;
+    color: #f9a8d4;
+    font-weight: 700;
+}
+
+@media (max-width: 600px) {
+    .top-nav {
+        padding-left: 0.85rem;
+    }
+
+    .trimmer-panel {
+        gap: 0.85rem;
+    }
+
+    .player-row .chip-btn {
+        margin-left: auto;
+    }
+}
+
+/* Phones: one time field per row, so mm:ss.mmm fits with its −/+ buttons */
+@media (max-width: 520px) {
+    .time-fields {
+        grid-template-columns: 1fr;
+        gap: 0.9rem;
+    }
+
+    .time-field {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        align-items: center;
+        column-gap: 0.75rem;
+        row-gap: 0.3rem;
+    }
+
+    .time-field label {
+        min-width: 3.2rem;
+    }
+
+    .time-field .set-here-btn {
+        grid-column: 2;
+    }
+
+    .nudge-btn {
+        width: 42px;
+    }
+}
+
+/* Very narrow screens: label above each time field, one mode per row */
+@media (max-width: 360px) {
+    .time-field {
+        grid-template-columns: 1fr;
+    }
+
+    .time-field .set-here-btn {
+        grid-column: 1;
+    }
+
+    .nudge-btn {
+        width: 36px;
+    }
+
+    .time-input-row input {
+        font-size: 15px;
+    }
+
+    .mode-selector {
+        grid-template-columns: 1fr;
+    }
 }
