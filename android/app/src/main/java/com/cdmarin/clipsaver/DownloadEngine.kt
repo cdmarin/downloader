@@ -221,7 +221,6 @@ object DownloadEngine {
             .addOption("-o", File(jobDir, "%(title)s.%(ext)s").absolutePath)
             .addOption("--no-check-certificates")
             .addOption("--no-warnings")
-            .addOption("--extractor-args", "youtube:player_client=mweb")
             .addOption("--newline")
             .addOption("--progress")
             .addOption(
@@ -244,7 +243,7 @@ object DownloadEngine {
                 .addOption("--audio-quality", "0")
             "m4a" -> request.addOption("-f", "bestaudio[ext=m4a]/bestaudio/best")
             else -> request
-                .addOption("-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best")
+                .addOption("-f", "bestvideo+bestaudio[ext=m4a]/bestvideo+bestaudio/best")
                 .addOption("--merge-output-format", "mp4")
         }
 
@@ -254,6 +253,9 @@ object DownloadEngine {
             request
                 .addOption("--download-sections", "*$start-$end")
                 .addOption("--force-keyframes-at-cuts")
+                // Sections are fetched by FFmpeg, and YouTube answers 403 to its requests for the
+                // high quality streams; the mweb client still offers one (360p) that FFmpeg can read
+                .addOption("--extractor-args", "youtube:player_client=mweb")
         }
         return request
     }

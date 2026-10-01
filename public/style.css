@@ -311,6 +311,10 @@ button:disabled {
     align-items: center;
 }
 
+.trim-section.hidden {
+    display: none;
+}
+
 .trim-toggle-btn {
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid var(--glass-border);

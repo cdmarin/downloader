@@ -13,6 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const copyUrlBtn = document.getElementById('copy-url-btn');
 
     // Trim Elements
+    const trimSection = document.getElementById('trim-section');
     const toggleTrimBtn = document.getElementById('toggle-trim-btn');
     const trimControls = document.getElementById('trim-controls');
     const trimStartInput = document.getElementById('trim-start');
@@ -42,6 +43,29 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
+    // Trimming is only offered for audio: the section shows up when an audio format is selected
+    function isAudioFormat(format) {
+        return format === 'mp3' || format === 'm4a';
+    }
+
+    function updateTrimVisibility() {
+        if (!trimSection) return;
+        const format = document.querySelector('input[name="format"]:checked').value;
+        const show = isAudioFormat(format);
+        trimSection.classList.toggle('hidden', !show);
+        if (!show) {
+            trimControls.classList.add('hidden');
+            toggleTrimBtn.classList.remove('active');
+            trimStartInput.value = '';
+            trimEndInput.value = '';
+        }
+    }
+
+    document.querySelectorAll('input[name="format"]').forEach(radio => {
+        radio.addEventListener('change', updateTrimVisibility);
+    });
+    updateTrimVisibility();
 
     // Fetch local network info on load (only meaningful when served from the PC)
     if (!androidBridge && !desktopBridge) {
@@ -126,8 +150,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!url) return;
         
         const format = document.querySelector('input[name="format"]:checked').value;
-        const trimStart = trimStartInput ? trimStartInput.value.trim() : '';
-        const trimEnd = trimEndInput ? trimEndInput.value.trim() : '';
+        const canTrim = isAudioFormat(format);
+        const trimStart = canTrim && trimStartInput ? trimStartInput.value.trim() : '';
+        const trimEnd = canTrim && trimEndInput ? trimEndInput.value.trim() : '';
 
         // Validation for trim inputs
         const startSec = parseTimeToSeconds(trimStart);
@@ -385,6 +410,25 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (btn.dataset.desktopAction === 'open') desktopBridge.openFile(data.filename);
                     else desktopBridge.showInFolder(data.filename);
                 });
+            });
+        }
+        // The file is served from the PC's Downloads folder: if it was deleted or moved there,
+        // say so instead of letting the browser fail silently
+        const saveLink = resultContainer.querySelector('a.download-file-btn');
+        if (saveLink) {
+            saveLink.addEventListener('click', async (e) => {
+                e.preventDefault();
+                let available = false;
+                try {
+                    available = (await fetch(downloadUrl, { method: 'HEAD' })).ok;
+                } catch (err) { /* server unreachable */ }
+                if (available) {
+                    window.location.href = downloadUrl;
+                } else {
+                    resultContainer.querySelector('.result-card p').textContent =
+                        'El archivo ya no está en la carpeta Descargas del PC (se borró o se movió). Vuelve a descargarlo.';
+                    saveLink.remove();
+                }
             });
         }
         resultContainer.classList.remove('hidden');

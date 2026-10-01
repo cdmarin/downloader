@@ -206,7 +206,6 @@ app.post('/api/download', (req, res) => {
         noCheckCertificates: true,
         noWarnings: true,
         jsRuntimes: config.jsRuntimes,
-        extractorArgs: 'youtube:player_client=mweb',
         newline: true,
         progress: true,
         progressTemplate: `download:${PROGRESS_PREFIX} %(progress.status)s %(progress.downloaded_bytes)s %(progress.total_bytes)s %(progress.total_bytes_estimate)s %(progress.speed)s %(progress.eta)s`,
@@ -230,8 +229,8 @@ app.post('/api/download', (req, res) => {
         // Audio original directo (m4a/aac)
         options.format = 'bestaudio[ext=m4a]/bestaudio/best';
     } else {
-        // Video MP4: unificar mejor video y mejor audio con merge si hay ffmpeg
-        options.format = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best';
+        // Video MP4: máxima calidad disponible (cualquier códec) unida con el mejor audio
+        options.format = 'bestvideo+bestaudio[ext=m4a]/bestvideo+bestaudio/best';
         options.mergeOutputFormat = 'mp4';
     }
 
@@ -248,6 +247,9 @@ app.post('/api/download', (req, res) => {
         const endVal = endSec !== null ? endSec : 'inf';
         options.downloadSections = `*${startVal}-${endVal}`;
         options.forceKeyframesAtCuts = true;
+        // Sections are fetched by FFmpeg, and YouTube answers 403 to its requests for the
+        // high quality streams; the mweb client still offers one (360p) that FFmpeg can read
+        options.extractorArgs = 'youtube:player_client=mweb';
         console.log(`Applied trimming section: *${startVal}-${endVal}`);
     }
 
