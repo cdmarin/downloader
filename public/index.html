@@ -154,7 +154,7 @@
                         </button>
                         <span class="time-readout"><span id="current-time">00:00.000</span> / <span id="total-time">00:00.000</span></span>
                         <button type="button" id="play-selection-btn" class="chip-btn">
-                            <i class="fa-solid fa-repeat"></i> Escuchar selección
+                            <i class="fa-solid fa-repeat"></i> Selección
                         </button>
                     </div>
 
@@ -172,39 +172,35 @@
                             <label for="cut-start">Inicio</label>
                             <div class="time-input-row">
                                 <button type="button" class="nudge-btn" data-target="start" data-step="-0.1" aria-label="Inicio 0,1 s antes">−</button>
-                                <input type="text" id="cut-start" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="00:00.000">
+                                <input type="text" id="cut-start" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="mm:ss.mmm" title="Minutos, segundos y milisegundos (mm:ss.mmm) o segundos (10.5)">
                                 <button type="button" class="nudge-btn" data-target="start" data-step="0.1" aria-label="Inicio 0,1 s después">+</button>
+                                <button type="button" class="nudge-btn set-here-btn" data-target="start" title="Usar la posición actual" aria-label="Inicio en la posición actual">
+                                    <i class="fa-solid fa-location-crosshairs"></i>
+                                </button>
                             </div>
-                            <button type="button" class="link-btn set-here-btn" data-target="start">
-                                <i class="fa-solid fa-location-crosshairs"></i> Usar posición actual
-                            </button>
                         </div>
                         <div class="time-field">
                             <label for="cut-end">Final</label>
                             <div class="time-input-row">
                                 <button type="button" class="nudge-btn" data-target="end" data-step="-0.1" aria-label="Final 0,1 s antes">−</button>
-                                <input type="text" id="cut-end" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="00:10.000">
+                                <input type="text" id="cut-end" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="mm:ss.mmm" title="Minutos, segundos y milisegundos (mm:ss.mmm) o segundos (10.5)">
                                 <button type="button" class="nudge-btn" data-target="end" data-step="0.1" aria-label="Final 0,1 s después">+</button>
+                                <button type="button" class="nudge-btn set-here-btn" data-target="end" title="Usar la posición actual" aria-label="Final en la posición actual">
+                                    <i class="fa-solid fa-location-crosshairs"></i>
+                                </button>
                             </div>
-                            <button type="button" class="link-btn set-here-btn" data-target="end">
-                                <i class="fa-solid fa-location-crosshairs"></i> Usar posición actual
-                            </button>
                         </div>
                     </div>
-                    <p class="cut-summary">Duración del recorte: <strong id="cut-length">—</strong></p>
-                    <small class="trim-hint">Formato <code>mm:ss.mmm</code> (minutos, segundos y milisegundos), por ejemplo <code>00:10.500</code>. También vale <code>10.5</code> en segundos.</small>
 
-                    <div class="mode-selector" role="radiogroup" aria-label="Tipo de recorte">
-                        <label class="radio-label">
-                            <input type="radio" name="trim-mode" value="exact" checked>
-                            <span class="radio-custom"><i class="fa-solid fa-crosshairs"></i> Exacto</span>
-                        </label>
-                        <label class="radio-label">
-                            <input type="radio" name="trim-mode" value="fast">
-                            <span class="radio-custom"><i class="fa-solid fa-bolt"></i> Rápido</span>
+                    <div class="cut-options">
+                        <span class="cut-summary">Recorte: <strong id="cut-length">—</strong></span>
+                        <label class="switch" title="Corta al instante y sin perder calidad, pero en el fotograma clave más cercano">
+                            <input type="checkbox" id="fast-mode">
+                            <span class="switch-track"></span>
+                            <span>Corte rápido</span>
                         </label>
                     </div>
-                    <small class="trim-hint" id="mode-hint"></small>
+                    <small class="trim-hint hidden" id="mode-hint">El corte rápido puede adelantarse o retrasarse unos segundos.</small>
 
                     <button type="button" id="cut-btn" class="primary-btn">
                         <i class="fa-solid fa-scissors"></i> Recortar

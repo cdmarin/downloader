@@ -310,15 +310,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ----- Mode -----
 
-    const modeHint = $('mode-hint');
-    function updateModeHint() {
-        const fast = document.querySelector('input[name="trim-mode"]:checked').value === 'fast';
-        modeHint.textContent = fast
-            ? 'Instantáneo y sin perder calidad, pero el corte puede adelantarse o retrasarse unos segundos (al fotograma clave más cercano).'
-            : 'Corta justo en el milisegundo elegido. Tarda un poco más porque vuelve a codificar el archivo.';
-    }
-    document.querySelectorAll('input[name="trim-mode"]').forEach(r => r.addEventListener('change', updateModeHint));
-    updateModeHint();
+    const fastMode = $('fast-mode');
+    fastMode.addEventListener('change', () => $('mode-hint').classList.toggle('hidden', !fastMode.checked));
 
     // ----- Cutting -----
 
@@ -343,7 +336,7 @@ document.addEventListener('DOMContentLoaded', () => {
             start: state.start.toFixed(3),
             // Cutting up to the very end: let FFmpeg read to the end of the file
             end: state.end !== null && !(state.duration && state.duration - state.end < 0.0005) ? state.end.toFixed(3) : '',
-            mode: document.querySelector('input[name="trim-mode"]:checked').value,
+            mode: fastMode.checked ? 'fast' : 'exact',
             hasVideo: state.hasVideo ? '1' : '0',
             mediaDuration: state.duration ? state.duration.toFixed(3) : '',
             name: state.file.name
