@@ -15,13 +15,13 @@
         android:translateY="-1">
         <path
             android:pathData="M48,60 V44 a4,4 0 0 1 8,0 V70 a8,8 0 0 1 -16,0 V40 a16,16 0 0 1 32,0 V76"
-            android:strokeColor="#FFFFFF"
+            android:strokeColor="#6366F1"
             android:strokeLineCap="round"
             android:strokeLineJoin="round"
             android:strokeWidth="5.5" />
         <path
             android:pathData="M66,70 L72,77 L78,70"
-            android:strokeColor="#FFFFFF"
+            android:strokeColor="#6366F1"
             android:strokeLineCap="round"
             android:strokeLineJoin="round"
             android:strokeWidth="5.5" />
