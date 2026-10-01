@@ -125,7 +125,7 @@ header {
     align-items: center;
     justify-content: center;
     gap: 0.75rem;
-    font-size: clamp(2rem, 5vw, 2.75rem);
+    font-size: clamp(1.6rem, 9vw, 2.75rem);
     margin-bottom: 0.75rem;
     background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
     -webkit-background-clip: text;
@@ -366,6 +366,7 @@ button:disabled {
 
 .trim-field {
     flex: 1;
+    min-width: 0; /* let flex items shrink below the input's intrinsic width */
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
@@ -381,6 +382,8 @@ button:disabled {
 }
 
 .trim-field input {
+    width: 100%;
+    min-width: 0;
     background: rgba(0, 0, 0, 0.3);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
