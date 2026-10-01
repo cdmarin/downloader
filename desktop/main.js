@@ -6,6 +6,7 @@ const path = require('path');
 const fs = require('fs');
 
 const UPDATE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const PREFERRED_PORT = 47811;
 
 // Binaries cannot run from inside app.asar, electron-builder unpacks them next to it (asarUnpack)
 function unpacked(p) {
@@ -59,8 +60,10 @@ async function createWindow() {
     const ffmpegStatic = require('ffmpeg-static');
     // Packaged: server.js and public/ are copied into the app. `npm start`: use the repo's copies
     const { start } = require(app.isPackaged ? './server' : '../server');
-    const server = await start({
-        port: 0,              // any free port, so it never clashes with `node server.js` on 3000
+    const options = {
+        // A fixed port keeps the page's origin, so what it remembers (e.g. "Ahora no" on the
+        // new version notice) survives restarts; any free port if it is taken
+        port: PREFERRED_PORT,
         host: '127.0.0.1',    // only this PC (no firewall prompt)
         downloadsFolder: app.getPath('downloads'),
         ytDlpPath,
@@ -71,8 +74,16 @@ async function createWindow() {
         childEnv: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
         desktopApp: true,
         appVersion: app.getVersion(),
-        platform: 'Windows'
-    });
+        platform: 'Windows',
+        // electron-builder's portable .exe sets this variable; the installed app does not
+        variant: process.env.PORTABLE_EXECUTABLE_DIR ? 'portable' : 'setup'
+    };
+    let server;
+    try {
+        server = await start(options);
+    } catch (e) {
+        server = await start({ ...options, port: 0 });
+    }
     const appUrl = `http://127.0.0.1:${server.address().port}/`;
 
     mainWindow = new BrowserWindow({

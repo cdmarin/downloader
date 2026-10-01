@@ -49,6 +49,16 @@
         </button>
     </nav>
 
+    <!-- New version notice (updates.js) -->
+    <div id="update-banner" class="update-banner hidden" role="status">
+        <i class="fa-solid fa-gift update-icon"></i>
+        <span id="update-text" class="update-text">Nueva versión <strong id="update-version"></strong></span>
+        <div class="update-actions">
+            <a id="update-download" class="update-download" href="#" target="_blank" rel="noopener">Descargar</a>
+            <button type="button" id="update-dismiss" class="update-dismiss">Ahora no</button>
+        </div>
+    </div>
+
     <main class="container">
         <header>
             <div class="logo">
@@ -259,6 +269,7 @@
     </footer>
 
     <script src="script.js"></script>
+    <script src="updates.js"></script>
     <script src="menu.js"></script>
     <script src="trimmer.js"></script>
 </body>

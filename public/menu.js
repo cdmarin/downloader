@@ -1,7 +1,6 @@
 // Top-left menu: switches between the downloader and the tools, and shows the "About" box.
 document.addEventListener('DOMContentLoaded', () => {
     const { androidBridge, escapeHtml } = window.ClipSaverUI;
-    const RELEASES_API = 'https://api.github.com/repos/cdmarin/downloader/releases/latest';
 
     const menu = document.getElementById('app-menu');
     const menuBtn = document.getElementById('menu-btn');
@@ -64,30 +63,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    async function installedVersion() {
-        if (androidBridge) return { version: androidBridge.appVersion(), platform: 'Android' };
-        try {
-            const info = await (await fetch('/api/info')).json();
-            return info.app || {};
-        } catch (e) {
-            return {};
-        }
-    }
-
-    // "v1.4" / "1.4.0" -> [1, 4, 0]; null when it is not a version number (e.g. a local build)
-    function parseVersion(text) {
-        const match = /^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?$/.exec(String(text || '').trim());
-        return match ? [1, 2, 3].map(i => Number(match[i] || 0)) : null;
-    }
-
-    function isNewer(latest, current) {
-        for (let i = 0; i < 3; i++) {
-            if (latest[i] !== current[i]) return latest[i] > current[i];
-        }
-        return false;
-    }
-
     async function openAbout() {
+        const { installedVersion, latestRelease, isNewer, downloadFor } = window.ClipSaverUpdates;
         aboutModal.classList.remove('hidden');
         const versionEl = document.getElementById('about-version');
         const platformEl = document.getElementById('about-platform');
@@ -95,26 +72,24 @@ document.addEventListener('DOMContentLoaded', () => {
         updateEl.className = 'about-update';
         updateEl.textContent = 'Buscando actualizaciones…';
 
-        const { version, platform } = await installedVersion();
+        const installed = await installedVersion();
+        const { version, platform } = installed;
         versionEl.textContent = version ? `v${String(version).replace(/^v/, '')}` : 'Desconocida';
         const platformName = platform === 'PC' ? 'PC (navegador)' : platform;
         platformEl.textContent = platformName ? `ClipSaver para ${platformName}` : '';
 
         try {
-            const response = await fetch(RELEASES_API, { headers: { Accept: 'application/vnd.github+json' } });
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const release = await response.json();
-            const latest = parseVersion(release.tag_name);
-            const current = parseVersion(version);
-            if (latest && current && isNewer(latest, current)) {
+            const release = await latestRelease({ fresh: true });
+            if (isNewer(release.tag, version)) {
+                const download = downloadFor(release, installed);
                 updateEl.classList.add('has-update');
-                updateEl.innerHTML = `Hay una versión nueva: <strong>${escapeHtml(release.tag_name)}</strong>
-                    <a href="${escapeHtml(release.html_url)}" target="_blank" rel="noopener" class="update-link">Descargar</a>`;
-            } else if (latest && current) {
+                updateEl.innerHTML = `Hay una versión nueva: <strong>${escapeHtml(release.tag)}</strong>
+                    <a href="${escapeHtml(download.url)}" target="_blank" rel="noopener" class="update-link">${download.isFile ? 'Descargar' : 'Ver novedades'}</a>`;
+            } else if (/^v?\d+(\.\d+)*$/.test(String(version || '').trim())) {
                 updateEl.classList.add('up-to-date');
                 updateEl.innerHTML = '<i class="fa-solid fa-circle-check"></i> Tienes la última versión';
             } else {
-                updateEl.textContent = `Última versión publicada: ${release.tag_name}`;
+                updateEl.textContent = `Última versión publicada: ${release.tag}`;
             }
         } catch (e) {
             updateEl.textContent = 'No se pudo comprobar si hay versiones nuevas (¿sin conexión?).';

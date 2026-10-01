@@ -41,7 +41,8 @@ const config = {
     childEnv: process.env,
     desktopApp: false,
     appVersion: pcVersion(),
-    platform: 'PC'
+    platform: 'PC',
+    variant: null // Windows app: 'portable' or 'setup', to offer the right download
 };
 
 const app = express();
@@ -65,7 +66,7 @@ function getLocalIp() {
 
 // Endpoint to provide network info to the frontend
 app.get('/api/info', (req, res) => {
-    const app = { version: config.appVersion, platform: config.platform };
+    const app = { version: config.appVersion, platform: config.platform, variant: config.variant };
     if (config.desktopApp) {
         // The desktop app only listens on this PC, so there is no mobile link to offer
         return res.json({ desktopApp: true, app });

@@ -1,5 +1,6 @@
 package com.cdmarin.clipsaver
 
+import android.os.Build
 import android.util.Log
 import android.webkit.JavascriptInterface
 import org.json.JSONObject
@@ -41,6 +42,10 @@ class WebBridge(private val activity: MainActivity) {
     @JavascriptInterface
     fun appVersion(): String =
         activity.packageManager.getPackageInfo(activity.packageName, 0).versionName.orEmpty()
+
+    /** Main CPU type (e.g. "arm64-v8a"), to download the matching APK of a new version. */
+    @JavascriptInterface
+    fun cpuAbi(): String = Build.SUPPORTED_ABIS.firstOrNull().orEmpty()
 
     @JavascriptInterface
     fun openFile(jobId: String) {
