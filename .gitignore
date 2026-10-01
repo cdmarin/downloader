@@ -3,3 +3,4 @@ downloads/*
 !downloads/.gitkeep
 *.log
 .env
+desktop/dist/

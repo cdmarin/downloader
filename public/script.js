@@ -26,6 +26,12 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.classList.add('android-app');
     }
 
+    // Inside the Windows app (desktop/), files are already in Downloads and can be opened directly
+    const desktopBridge = window.ClipSaverDesktop || null;
+    if (desktopBridge) {
+        document.body.classList.add('desktop-app');
+    }
+
     // Toggle Trim Section
     if (toggleTrimBtn && trimControls) {
         toggleTrimBtn.addEventListener('click', () => {
@@ -38,7 +44,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Fetch local network info on load (only meaningful when served from the PC)
-    if (!androidBridge) {
+    if (!androidBridge && !desktopBridge) {
         fetch('/api/info')
             .then(res => res.json())
             .then(data => {
@@ -337,6 +343,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     Abrir archivo
                 </button>
             `;
+        } else if (desktopBridge && data.filename) {
+            downloadButtonHtml = `
+                <button type="button" class="download-file-btn" data-desktop-action="open">
+                    <i class="fa-solid fa-play"></i>
+                    Abrir archivo
+                </button>
+                <button type="button" class="try-again-btn" data-desktop-action="show">
+                    <i class="fa-regular fa-folder-open"></i>
+                    Mostrar en carpeta
+                </button>
+            `;
         } else if (downloadUrl) {
             downloadButtonHtml = `
                 <a href="${downloadUrl}" class="download-file-btn" download>
@@ -362,6 +379,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             </div>
         `;
+        if (desktopBridge && data.filename) {
+            resultContainer.querySelectorAll('[data-desktop-action]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    if (btn.dataset.desktopAction === 'open') desktopBridge.openFile(data.filename);
+                    else desktopBridge.showInFolder(data.filename);
+                });
+            });
+        }
         resultContainer.classList.remove('hidden');
     }
 

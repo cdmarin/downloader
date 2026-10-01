@@ -18,15 +18,23 @@ try {
     ffmpegPath = null;
 }
 
+// Defaults for `node server.js`; the desktop app (desktop/main.js) overrides them via start()
+const config = {
+    port: 3000,
+    host: '0.0.0.0',
+    downloadsFolder: path.join(os.homedir(), 'Downloads'),
+    ytDlpPath: youtubedl.constants.YOUTUBE_DL_PATH,
+    ffmpegPath,
+    jsRuntimes: 'node',
+    childEnv: process.env,
+    desktopApp: false
+};
+
 const app = express();
-const PORT = 3000;
 
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public'))); // Serve the web UI (HTML, CSS, JS)
-
-// Helper to determine the standard Downloads folder
-const downloadsFolder = path.join(os.homedir(), 'Downloads');
 
 // Function to detect the local network IP for mobile connection
 function getLocalIp() {
@@ -43,11 +51,15 @@ function getLocalIp() {
 
 // Endpoint to provide network info to the frontend
 app.get('/api/info', (req, res) => {
+    if (config.desktopApp) {
+        // The desktop app only listens on this PC, so there is no mobile link to offer
+        return res.json({ desktopApp: true });
+    }
     const ip = getLocalIp();
     res.json({
         localIp: ip,
-        port: PORT,
-        mobileUrl: `http://${ip}:${PORT}`
+        port: config.port,
+        mobileUrl: `http://${ip}:${config.port}`
     });
 });
 
@@ -58,7 +70,7 @@ app.get('/api/file', (req, res) => {
         return res.status(400).send('No file specified');
     }
     const safeFilename = path.basename(filename);
-    const filePath = path.join(downloadsFolder, safeFilename);
+    const filePath = path.join(config.downloadsFolder, safeFilename);
 
     if (fs.existsSync(filePath)) {
         res.download(filePath, safeFilename);
@@ -139,7 +151,7 @@ function jobSnapshot(job) {
 function runYtDlp(url, options, job) {
     return new Promise((resolve, reject) => {
         const args = [url].concat(youtubedl.args(options));
-        const child = spawn(youtubedl.constants.YOUTUBE_DL_PATH, args, { windowsHide: true });
+        const child = spawn(config.ytDlpPath, args, { windowsHide: true, env: config.childEnv });
         let stderr = '';
         let buffer = '';
 
@@ -185,6 +197,7 @@ app.post('/api/download', (req, res) => {
 
     console.log(`Starting download for: ${url} (Format: ${format}, Trim: ${trimStart || 'none'} - ${trimEnd || 'none'})`);
 
+    const downloadsFolder = config.downloadsFolder;
     // Output format: Downloads/Title.extension
     const outputPathTemplate = path.join(downloadsFolder, '%(title)s.%(ext)s');
 
@@ -192,7 +205,7 @@ app.post('/api/download', (req, res) => {
         output: outputPathTemplate,
         noCheckCertificates: true,
         noWarnings: true,
-        jsRuntimes: 'node',
+        jsRuntimes: config.jsRuntimes,
         extractorArgs: 'youtube:player_client=mweb',
         newline: true,
         progress: true,
@@ -203,8 +216,8 @@ app.post('/api/download', (req, res) => {
         noQuiet: true
     };
 
-    if (ffmpegPath) {
-        options.ffmpegLocation = ffmpegPath;
+    if (config.ffmpegPath) {
+        options.ffmpegLocation = config.ffmpegPath;
     }
 
     // Handle audio/video format
@@ -310,13 +323,29 @@ app.post('/api/download', (req, res) => {
     })();
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-    const localIp = getLocalIp();
-    console.log(`========================================================`);
-    console.log(`🚀 ClipSaver Server funcionando:`);
-    console.log(`💻 En tu PC:            http://localhost:${PORT}`);
-    console.log(`📱 En tu Móvil (Wi-Fi): http://${localIp}:${PORT}`);
-    console.log(`📂 Carpeta de descargas: ${downloadsFolder}`);
-    console.log(`🎵 Soporte FFmpeg/MP3:  ${ffmpegPath ? 'Habilitado' : 'Usando FFmpeg del sistema'}`);
-    console.log(`========================================================`);
-});
+// Starts the server; resolves with the http.Server once it is listening
+function start(overrides = {}) {
+    Object.assign(config, overrides);
+    return new Promise((resolve, reject) => {
+        const server = app.listen(config.port, config.host, () => {
+            config.port = server.address().port; // real port when 0 (pick any free one) was requested
+            resolve(server);
+        });
+        server.on('error', reject);
+    });
+}
+
+module.exports = { start };
+
+if (require.main === module) {
+    start().then(() => {
+        const localIp = getLocalIp();
+        console.log(`========================================================`);
+        console.log(`🚀 ClipSaver Server funcionando:`);
+        console.log(`💻 En tu PC:            http://localhost:${config.port}`);
+        console.log(`📱 En tu Móvil (Wi-Fi): http://${localIp}:${config.port}`);
+        console.log(`📂 Carpeta de descargas: ${config.downloadsFolder}`);
+        console.log(`🎵 Soporte FFmpeg/MP3:  ${config.ffmpegPath ? 'Habilitado' : 'Usando FFmpeg del sistema'}`);
+        console.log(`========================================================`);
+    });
+}

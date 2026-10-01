@@ -601,6 +601,10 @@ button:disabled {
     background: rgba(255, 255, 255, 0.15);
 }
 
+.try-again-btn i {
+    margin-right: 0.4rem;
+}
+
 .try-again-btn:active {
     transform: scale(0.97);
 }
@@ -968,7 +972,8 @@ footer p {
     }
 }
 
-/* Inside the Android app there is no PC server to connect to */
-.android-app .mobile-nav-btn {
+/* Inside the Android and Windows apps there is no PC server for a phone to connect to */
+.android-app .mobile-nav-btn,
+.desktop-app .mobile-nav-btn {
     display: none;
 }
