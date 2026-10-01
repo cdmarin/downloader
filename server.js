@@ -378,7 +378,7 @@ app.post('/api/download', (req, res) => {
 
 const uploadsFolder = path.join(os.tmpdir(), 'clipsaver-uploads');
 
-// Codec settings for "exact" trims of audio-only files, keyed by input extension
+// Codec settings for trims of audio-only files, keyed by input extension
 const AUDIO_ENCODERS = {
     mp3: { ext: 'mp3', args: ['-c:a', 'libmp3lame', '-q:a', '0'] },
     m4a: { ext: 'm4a', args: ['-c:a', 'aac', '-b:a', '192k'] },
@@ -392,19 +392,16 @@ const AUDIO_ENCODERS = {
 };
 
 // Same rules as DownloadEngine.trimOutputExt()/trimArgs() in the Android app
-function trimOutputExt(mode, hasVideo, inputExt) {
-    if (mode === 'fast') return inputExt || (hasVideo ? 'mp4' : 'm4a');
+function trimOutputExt(hasVideo, inputExt) {
     if (hasVideo) return 'mp4';
     return (AUDIO_ENCODERS[inputExt] || AUDIO_ENCODERS.m4a).ext;
 }
 
-function trimArgs({ input, output, start, duration, mode, hasVideo, inputExt }) {
+// Re-encodes the fragment so the cut lands exactly on the requested times
+function trimArgs({ input, output, start, duration, hasVideo, inputExt }) {
     const args = ['-hide_banner', '-nostdin', '-y', '-progress', 'pipe:1', '-nostats', '-ss', String(start), '-i', input];
     if (duration !== null) args.push('-t', String(duration));
-    if (mode === 'fast') {
-        // Copies the streams as they are: instant, but the cut lands on the nearest keyframe
-        args.push('-map', '0:v?', '-map', '0:a?', '-c', 'copy', '-avoid_negative_ts', 'make_zero');
-    } else if (hasVideo) {
+    if (hasVideo) {
         args.push('-map', '0:v:0', '-map', '0:a?', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20',
             '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart');
     } else {
@@ -469,7 +466,7 @@ function newJob() {
 
 // Body: the raw file (browser) or nothing (desktop app, which passes ?path=)
 app.post('/api/trim', async (req, res) => {
-    const { name, path: localPath, mode } = req.query;
+    const { name, path: localPath } = req.query;
     const hasVideo = req.query.hasVideo === '1';
     const start = parseTimeInput(req.query.start) ?? 0;
     const end = parseTimeInput(req.query.end);
@@ -516,11 +513,11 @@ app.post('/api/trim', async (req, res) => {
     (async () => {
         try {
             fs.mkdirSync(config.downloadsFolder, { recursive: true });
-            const output = uniqueOutputPath(config.downloadsFolder, baseName, trimOutputExt(mode, hasVideo, inputExt));
-            const args = trimArgs({ input, output, start, duration, mode, hasVideo, inputExt });
+            const output = uniqueOutputPath(config.downloadsFolder, baseName, trimOutputExt(hasVideo, inputExt));
+            const args = trimArgs({ input, output, start, duration, hasVideo, inputExt });
             job.status = 'processing';
             job.percent = 0;
-            console.log(`Trimming ${safeName}: ${start}s - ${end ?? 'end'} (${mode === 'fast' ? 'fast' : 'exact'})`);
+            console.log(`Trimming ${safeName}: ${start}s - ${end ?? 'end'}`);
             await runFfmpeg(args, job, duration ?? Number(req.query.mediaDuration) - start);
 
             const filename = path.basename(output);

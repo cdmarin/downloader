@@ -1536,67 +1536,6 @@ footer p {
     font-variant-numeric: tabular-nums;
 }
 
-.trimmer-panel .trim-hint {
-    margin-top: -0.4rem;
-    color: #fcd34d;
-}
-
-.trim-hint.hidden {
-    display: none;
-}
-
-/* On/off switch ("Corte rápido") */
-.switch {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.55rem;
-    cursor: pointer;
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: var(--text-main);
-}
-
-.switch input {
-    position: absolute;
-    opacity: 0;
-    width: 1px;
-    height: 1px;
-}
-
-.switch-track {
-    position: relative;
-    flex-shrink: 0;
-    width: 42px;
-    height: 24px;
-    border-radius: 12px;
-    background: rgba(255, 255, 255, 0.15);
-    transition: background 0.2s;
-}
-
-.switch-track::after {
-    content: '';
-    position: absolute;
-    top: 3px;
-    left: 3px;
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    background: white;
-    transition: transform 0.2s;
-}
-
-.switch input:checked + .switch-track {
-    background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
-}
-
-.switch input:checked + .switch-track::after {
-    transform: translateX(18px);
-}
-
-.switch input:focus-visible + .switch-track {
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.5);
-}
-
 .primary-btn {
     background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
     color: white;

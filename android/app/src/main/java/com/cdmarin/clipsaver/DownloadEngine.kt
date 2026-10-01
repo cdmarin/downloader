@@ -314,7 +314,7 @@ object DownloadEngine {
 
     private class AudioEncoder(val ext: String, val args: List<String>)
 
-    // Codec settings for "exact" trims of audio-only files, keyed by input extension
+    // Codec settings for trims of audio-only files, keyed by input extension
     private val AUDIO_ENCODERS = mapOf(
         "mp3" to AudioEncoder("mp3", listOf("-c:a", "libmp3lame", "-q:a", "0")),
         "m4a" to AudioEncoder("m4a", listOf("-c:a", "aac", "-b:a", "192k")),
@@ -340,18 +340,17 @@ object DownloadEngine {
             return JSONObject().put("error", "El inicio debe ser anterior al final.")
         }
         val hasVideo = payload.optString("hasVideo") == "1"
-        val fast = payload.optString("mode") == "fast"
         val mediaDuration = payload.optString("mediaDuration").toDoubleOrNull()
 
         val job = Job(UUID.randomUUID().toString(), isAudio = !hasVideo, trimmed = true, isTrimJob = true)
         jobs[job.id] = job
-        Log.i(TAG, "Trimming $source: $start - ${end ?: "end"} (${if (fast) "fast" else "exact"})")
+        Log.i(TAG, "Trimming $source: $start - ${end ?: "end"}")
 
         val appContext = context.applicationContext
         DownloadService.start(appContext)
         executor.execute {
             val duration = end?.let { it - start } ?: mediaDuration?.let { it - start }
-            runTrim(appContext, job, source, start, end, fast, hasVideo, duration)
+            runTrim(appContext, job, source, start, end, hasVideo, duration)
         }
         return JSONObject().put("jobId", job.id)
     }
@@ -362,7 +361,6 @@ object DownloadEngine {
         source: Uri,
         start: Double,
         end: Double?,
-        fast: Boolean,
         hasVideo: Boolean,
         expectedDuration: Double?
     ) {
@@ -381,13 +379,13 @@ object DownloadEngine {
 
             val baseName = (if ('.' in displayName) displayName.substringBeforeLast('.') else displayName)
                 .ifBlank { "archivo" }
-            val ext = trimOutputExt(fast, hasVideo, inputExt)
+            val ext = trimOutputExt(hasVideo, inputExt)
             val output = File(jobDir, "$baseName (recorte).$ext")
             synchronized(job) {
                 job.status = "processing"
                 job.percent = 0.0
             }
-            runFfmpeg(context, trimArgs(input, output, start, end?.let { it - start }, fast, hasVideo, inputExt), job, expectedDuration)
+            runFfmpeg(context, trimArgs(input, output, start, end?.let { it - start }, hasVideo, inputExt), job, expectedDuration)
 
             val mimeType = mimeTypeFor(output, !hasVideo)
             val uri = saveToDownloads(context, output, mimeType)
@@ -418,18 +416,15 @@ object DownloadEngine {
         }
     }
 
-    private fun trimOutputExt(fast: Boolean, hasVideo: Boolean, inputExt: String): String = when {
-        fast -> inputExt.ifEmpty { if (hasVideo) "mp4" else "m4a" }
-        hasVideo -> "mp4"
-        else -> (AUDIO_ENCODERS[inputExt] ?: DEFAULT_AUDIO_ENCODER).ext
-    }
+    private fun trimOutputExt(hasVideo: Boolean, inputExt: String): String =
+        if (hasVideo) "mp4" else (AUDIO_ENCODERS[inputExt] ?: DEFAULT_AUDIO_ENCODER).ext
 
+    // Re-encodes the fragment so the cut lands exactly on the requested times
     private fun trimArgs(
         input: File,
         output: File,
         start: Double,
         duration: Double?,
-        fast: Boolean,
         hasVideo: Boolean,
         inputExt: String
     ): List<String> {
@@ -438,14 +433,13 @@ object DownloadEngine {
             "-ss", seconds(start), "-i", input.absolutePath
         )
         if (duration != null) args += listOf("-t", seconds(duration))
-        args += when {
-            // Copies the streams as they are: instant, but the cut lands on the nearest keyframe
-            fast -> listOf("-map", "0:v?", "-map", "0:a?", "-c", "copy", "-avoid_negative_ts", "make_zero")
-            hasVideo -> listOf(
+        args += if (hasVideo) {
+            listOf(
                 "-map", "0:v:0", "-map", "0:a?", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
                 "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart"
             )
-            else -> listOf("-map", "0:a:0", "-vn") + (AUDIO_ENCODERS[inputExt] ?: DEFAULT_AUDIO_ENCODER).args
+        } else {
+            listOf("-map", "0:a:0", "-vn") + (AUDIO_ENCODERS[inputExt] ?: DEFAULT_AUDIO_ENCODER).args
         }
         args += output.absolutePath
         return args

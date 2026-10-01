@@ -308,11 +308,6 @@ document.addEventListener('DOMContentLoaded', () => {
     media.addEventListener('play', () => requestAnimationFrame(tick));
     ['pause', 'seeked', 'timeupdate'].forEach(type => media.addEventListener(type, render));
 
-    // ----- Mode -----
-
-    const fastMode = $('fast-mode');
-    fastMode.addEventListener('change', () => $('mode-hint').classList.toggle('hidden', !fastMode.checked));
-
     // ----- Cutting -----
 
     cutBtn.addEventListener('click', async () => {
@@ -336,7 +331,6 @@ document.addEventListener('DOMContentLoaded', () => {
             start: state.start.toFixed(3),
             // Cutting up to the very end: let FFmpeg read to the end of the file
             end: state.end !== null && !(state.duration && state.duration - state.end < 0.0005) ? state.end.toFixed(3) : '',
-            mode: fastMode.checked ? 'fast' : 'exact',
             hasVideo: state.hasVideo ? '1' : '0',
             mediaDuration: state.duration ? state.duration.toFixed(3) : '',
             name: state.file.name
