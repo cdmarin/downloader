@@ -33,13 +33,71 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.classList.add('desktop-app');
     }
 
+    // Blocks grow, shrink or collapse smoothly instead of making the page jump
+    const blockAnimations = new WeakMap();
+    const COLLAPSED = {
+        height: '0px', marginTop: '0px', paddingTop: '0px', paddingBottom: '0px',
+        borderTopWidth: '0px', borderBottomWidth: '0px', opacity: 0
+    };
+
+    function cancelBlockAnimation(el) {
+        const running = blockAnimations.get(el);
+        if (running) running.cancel();
+        blockAnimations.delete(el);
+    }
+
+    function animateBlock(el, keyframes, onFinish) {
+        cancelBlockAnimation(el);
+        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        // Animations do not advance while the page is in the background, so skip them there
+        if (reduceMotion || document.hidden || !el.animate) {
+            if (onFinish) onFinish();
+            return;
+        }
+        const animation = el.animate(
+            keyframes.map(frame => ({ ...frame, overflow: 'hidden' })),
+            { duration: 350, easing: 'ease' }
+        );
+        blockAnimations.set(el, animation);
+        animation.onfinish = () => {
+            blockAnimations.delete(el);
+            if (onFinish) onFinish();
+        };
+    }
+
+    function visibleHeight(el) {
+        return el.classList.contains('hidden') ? 0 : el.getBoundingClientRect().height;
+    }
+
+    function slideDown(el) {
+        cancelBlockAnimation(el);
+        el.classList.remove('hidden');
+        animateBlock(el, [COLLAPSED, { height: `${visibleHeight(el)}px` }]);
+    }
+
+    function slideUp(el, onFinish) {
+        if (el.classList.contains('hidden')) {
+            if (onFinish) onFinish();
+            return;
+        }
+        cancelBlockAnimation(el);
+        animateBlock(el, [{ height: `${visibleHeight(el)}px` }, COLLAPSED], () => {
+            el.classList.add('hidden');
+            if (onFinish) onFinish();
+        });
+    }
+
     // Toggle Trim Section
     if (toggleTrimBtn && trimControls) {
         toggleTrimBtn.addEventListener('click', () => {
-            const isHidden = trimControls.classList.toggle('hidden');
-            toggleTrimBtn.classList.toggle('active', !isHidden);
-            if (!isHidden && trimStartInput) {
-                trimStartInput.focus();
+            const open = !toggleTrimBtn.classList.contains('active');
+            toggleTrimBtn.classList.toggle('active', open);
+            if (open) {
+                slideDown(trimControls);
+                // preventScroll: focusing inside a block that is still clipped would scroll it
+                if (trimStartInput) trimStartInput.focus({ preventScroll: true });
+            } else {
+                slideUp(trimControls);
             }
         });
     }
@@ -49,17 +107,25 @@ document.addEventListener('DOMContentLoaded', () => {
         return format === 'mp3' || format === 'm4a';
     }
 
+    let trimShown = false;
+
     function updateTrimVisibility() {
         if (!trimSection) return;
         const format = document.querySelector('input[name="format"]:checked').value;
         const show = isAudioFormat(format);
-        trimSection.classList.toggle('hidden', !show);
-        if (!show) {
+        if (show === trimShown) return;
+        trimShown = show;
+        if (show) {
+            slideDown(trimSection);
+            return;
+        }
+        trimStartInput.value = '';
+        trimEndInput.value = '';
+        slideUp(trimSection, () => {
+            cancelBlockAnimation(trimControls);
             trimControls.classList.add('hidden');
             toggleTrimBtn.classList.remove('active');
-            trimStartInput.value = '';
-            trimEndInput.value = '';
-        }
+        });
     }
 
     document.querySelectorAll('input[name="format"]').forEach(radio => {
@@ -285,45 +351,21 @@ document.addEventListener('DOMContentLoaded', () => {
         return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
     }
 
-    // The result block grows, shrinks or collapses smoothly instead of making the page jump
-    let resultAnimation = null;
-
-    function animateResultHeight(from, to, onFinish) {
-        if (resultAnimation) resultAnimation.cancel();
-        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-        // Animations do not advance while the page is in the background, so skip them there
-        if (reduceMotion || document.hidden || from === to || !resultContainer.animate) {
-            if (onFinish) onFinish();
-            return;
-        }
-        resultAnimation = resultContainer.animate(
-            [
-                { height: `${from}px`, overflow: 'hidden' },
-                { height: `${to}px`, overflow: 'hidden' }
-            ],
-            { duration: 350, easing: 'ease' }
-        );
-        resultAnimation.onfinish = () => {
-            resultAnimation = null;
-            if (onFinish) onFinish();
-        };
-    }
-
-    function currentResultHeight() {
-        return resultContainer.classList.contains('hidden') ? 0 : resultContainer.getBoundingClientRect().height;
-    }
-
+    // Swap the result block's content, animating from its current height to the new one
     function setResult(html) {
-        const from = currentResultHeight();
-        if (resultAnimation) resultAnimation.cancel();
+        const from = visibleHeight(resultContainer);
+        cancelBlockAnimation(resultContainer);
         resultContainer.innerHTML = html;
         resultContainer.classList.remove('hidden');
-        animateResultHeight(from, resultContainer.getBoundingClientRect().height);
+        const to = visibleHeight(resultContainer);
+        if (from !== to) {
+            animateBlock(resultContainer, [{ height: `${from}px` }, { height: `${to}px` }]);
+        }
     }
 
     function hideResult() {
-        const from = currentResultHeight();
-        animateResultHeight(from, 0, () => {
+        const from = visibleHeight(resultContainer);
+        animateBlock(resultContainer, [{ height: `${from}px` }, { height: '0px' }], () => {
             resultContainer.classList.add('hidden');
             resultContainer.innerHTML = '';
         });
