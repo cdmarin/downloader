@@ -5,7 +5,7 @@ import android.webkit.JavascriptInterface
 import org.json.JSONObject
 
 /**
- * Exposed to script.js as `window.ClipSaverAndroid`; replaces the /api/* endpoints of server.js.
+ * Exposed to script.js as `window.ClipSaverAndroid`; replaces the /api endpoints of server.js.
  * Methods are called from a WebView background thread.
  */
 class WebBridge(private val activity: MainActivity) {
