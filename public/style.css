@@ -443,8 +443,7 @@ button:disabled {
 /* Results */
 .result-container {
     width: 100%;
-    margin-top: 2rem;
-    transition: all 0.4s ease;
+    display: flow-root; /* keeps the card's top margin inside, so script.js can animate the height from 0 */
 }
 
 .result-container.hidden {
@@ -458,6 +457,19 @@ button:disabled {
     gap: 1.25rem;
     text-align: center;
     padding: 2.5rem 2rem;
+    margin-top: 2rem;
+    animation: resultCardIn 0.4s ease both;
+}
+
+@keyframes resultCardIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .result-card {
+        animation: none;
+    }
 }
 
 .result-card h3 {

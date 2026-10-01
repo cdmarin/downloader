@@ -241,7 +241,11 @@ object DownloadEngine {
                 .addOption("-x")
                 .addOption("--audio-format", "mp3")
                 .addOption("--audio-quality", "0")
-            "m4a" -> request.addOption("-f", "bestaudio[ext=m4a]/bestaudio/best")
+            // If only a format with video is available, its audio is extracted
+            "m4a" -> request
+                .addOption("-f", "bestaudio[ext=m4a]/bestaudio/best")
+                .addOption("-x")
+                .addOption("--audio-format", "m4a")
             else -> request
                 .addOption("-f", "bestvideo+bestaudio[ext=m4a]/bestvideo+bestaudio/best")
                 .addOption("--merge-output-format", "mp4")

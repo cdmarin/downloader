@@ -180,6 +180,17 @@ function runYtDlp(url, options, job) {
     });
 }
 
+const YOUTUBE_URL = /^https?:\/\/([\w-]+\.)*(youtube\.com|youtu\.be)\//i;
+
+// Delete the temporary stream files (Title.f399.mp4.part...) that a failed attempt left behind
+function removePartialFiles(folder, beforeFiles) {
+    for (const file of fs.readdirSync(folder)) {
+        if (!beforeFiles.has(file) && /\.f\d+\.\w+(\.part|\.ytdl)?$/.test(file)) {
+            fs.rmSync(path.join(folder, file), { force: true });
+        }
+    }
+}
+
 app.get('/api/progress/:id', (req, res) => {
     const job = jobs.get(req.params.id);
     if (!job) {
@@ -226,8 +237,10 @@ app.post('/api/download', (req, res) => {
         options.audioFormat = 'mp3';
         options.audioQuality = '0'; // 0 = máxima calidad VBR
     } else if (format === 'm4a') {
-        // Audio original directo (m4a/aac)
+        // Audio original directo (m4a/aac); si solo hay un formato con video, se extrae su audio
         options.format = 'bestaudio[ext=m4a]/bestaudio/best';
+        options.extractAudio = true;
+        options.audioFormat = 'm4a';
     } else {
         // Video MP4: máxima calidad disponible (cualquier códec) unida con el mejor audio
         options.format = 'bestvideo+bestaudio[ext=m4a]/bestvideo+bestaudio/best';
@@ -278,7 +291,19 @@ app.post('/api/download', (req, res) => {
             const beforeFiles = new Set(fs.existsSync(downloadsFolder) ? fs.readdirSync(downloadsFolder) : []);
 
             // Execute yt-dlp
-            await runYtDlp(url, options, job);
+            let reducedQuality = false;
+            try {
+                await runYtDlp(url, options, job);
+            } catch (error) {
+                // YouTube rejects (403) the high quality streams depending on the yt-dlp version;
+                // the mweb client still offers a 360p one, so retry with it instead of failing
+                if (options.extractorArgs || !YOUTUBE_URL.test(url)) throw error;
+                console.warn('Download failed, retrying with the YouTube mweb client:', error.message.trim());
+                removePartialFiles(downloadsFolder, beforeFiles);
+                Object.assign(job, { status: 'starting', completedBytes: 0, streamBytes: 0, streamTotal: null, expectedTotal: null });
+                await runYtDlp(url, { ...options, extractorArgs: 'youtube:player_client=mweb' }, job);
+                reducedQuality = true;
+            }
 
             // Snapshot files after download
             const afterFiles = fs.existsSync(downloadsFolder) ? fs.readdirSync(downloadsFolder) : [];
@@ -306,6 +331,9 @@ app.post('/api/download', (req, res) => {
             let successMessage = isAudio ? 'Audio descargado con éxito.' : 'Video descargado con éxito.';
             if (startSec !== null || endSec !== null) {
                 successMessage += ' (Fragmento recortado)';
+            }
+            if (reducedQuality) {
+                successMessage += ' YouTube bloqueó la alta calidad, se descargó en calidad reducida.';
             }
 
             job.result = {

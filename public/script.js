@@ -171,10 +171,9 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Reset and show loading state
+        // Show loading state; the progress card replaces any previous result
         setLoadingState(true);
-        resultContainer.innerHTML = '';
-        resultContainer.classList.add('hidden');
+        showProgress(null);
 
         try {
             const data = await startDownload({
@@ -184,7 +183,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 trimEnd: trimEnd || undefined
             });
 
-            showProgress(null);
             const result = await waitForJob(data.jobId);
             showSuccess(result);
 
@@ -287,10 +285,54 @@ document.addEventListener('DOMContentLoaded', () => {
         return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
     }
 
+    // The result block grows, shrinks or collapses smoothly instead of making the page jump
+    let resultAnimation = null;
+
+    function animateResultHeight(from, to, onFinish) {
+        if (resultAnimation) resultAnimation.cancel();
+        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        // Animations do not advance while the page is in the background, so skip them there
+        if (reduceMotion || document.hidden || from === to || !resultContainer.animate) {
+            if (onFinish) onFinish();
+            return;
+        }
+        resultAnimation = resultContainer.animate(
+            [
+                { height: `${from}px`, overflow: 'hidden' },
+                { height: `${to}px`, overflow: 'hidden' }
+            ],
+            { duration: 350, easing: 'ease' }
+        );
+        resultAnimation.onfinish = () => {
+            resultAnimation = null;
+            if (onFinish) onFinish();
+        };
+    }
+
+    function currentResultHeight() {
+        return resultContainer.classList.contains('hidden') ? 0 : resultContainer.getBoundingClientRect().height;
+    }
+
+    function setResult(html) {
+        const from = currentResultHeight();
+        if (resultAnimation) resultAnimation.cancel();
+        resultContainer.innerHTML = html;
+        resultContainer.classList.remove('hidden');
+        animateResultHeight(from, resultContainer.getBoundingClientRect().height);
+    }
+
+    function hideResult() {
+        const from = currentResultHeight();
+        animateResultHeight(from, 0, () => {
+            resultContainer.classList.add('hidden');
+            resultContainer.innerHTML = '';
+        });
+    }
+
     function showProgress(progress) {
         let card = resultContainer.querySelector('.progress-card');
         if (!card) {
-            resultContainer.innerHTML = `
+            setResult(`
                 <div class="result-card glass-panel progress-card">
                     <div>
                         <h3 class="progress-title">Preparando descarga...</h3>
@@ -302,8 +344,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <span class="progress-speed"></span>
                     </div>
                 </div>
-            `;
-            resultContainer.classList.remove('hidden');
+            `);
             card = resultContainer.querySelector('.progress-card');
         }
         if (!progress) return;
@@ -388,7 +429,7 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
         }
 
-        resultContainer.innerHTML = `
+        setResult(`
             <div class="result-card glass-panel">
                 <i class="fa-solid fa-circle-check success-icon"></i>
                 <div>
@@ -403,7 +444,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <button class="try-again-btn" onclick="resetApp()">Descargar otro</button>
                 </div>
             </div>
-        `;
+        `);
         if (desktopBridge && data.filename) {
             resultContainer.querySelectorAll('[data-desktop-action]').forEach(btn => {
                 btn.addEventListener('click', () => {
@@ -431,11 +472,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
         }
-        resultContainer.classList.remove('hidden');
     }
 
     function showError(message) {
-        resultContainer.innerHTML = `
+        setResult(`
             <div class="result-card glass-panel">
                 <i class="fa-solid fa-circle-xmark error-icon"></i>
                 <div>
@@ -444,8 +484,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
                 <button class="try-again-btn" onclick="resetApp()">Intentar nuevamente</button>
             </div>
-        `;
-        resultContainer.classList.remove('hidden');
+        `);
     }
 
     // Reopening the Android app while a download is still running shows its progress again
@@ -468,8 +507,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Expose resetApp globally for inline onclick handlers
     window.resetApp = function() {
-        resultContainer.classList.add('hidden');
-        resultContainer.innerHTML = '';
+        hideResult();
         urlInput.value = '';
         if (trimStartInput) trimStartInput.value = '';
         if (trimEndInput) trimEndInput.value = '';
