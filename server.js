@@ -23,7 +23,7 @@ const PORT = 3000;
 
 app.use(cors());
 app.use(express.json());
-app.use(express.static(__dirname)); // Serve static files (HTML, CSS, JS)
+app.use(express.static(path.join(__dirname, 'public'))); // Serve the web UI (HTML, CSS, JS)
 
 // Helper to determine the standard Downloads folder
 const downloadsFolder = path.join(os.homedir(), 'Downloads');

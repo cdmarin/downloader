@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ClipSaver</string>
+    <string name="notification_channel">Descargas</string>
+    <string name="notification_downloading">Descargando…</string>
+    <string name="notification_processing">Procesando archivo…</string>
+    <string name="notification_preparing">Preparando descarga…</string>
+    <string name="no_app_to_open">No hay ninguna app para abrir este archivo</string>
+</resources>

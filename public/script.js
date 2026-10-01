@@ -20,6 +20,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let mobileUrl = '';
 
+    // Inside the Android app, downloads go through a native bridge instead of the local server
+    const androidBridge = window.ClipSaverAndroid || null;
+    if (androidBridge) {
+        document.body.classList.add('android-app');
+    }
+
     // Toggle Trim Section
     if (toggleTrimBtn && trimControls) {
         toggleTrimBtn.addEventListener('click', () => {
@@ -31,17 +37,29 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Fetch local network info on load
-    fetch('/api/info')
-        .then(res => res.json())
-        .then(data => {
-            if (data.mobileUrl) {
-                mobileUrl = data.mobileUrl;
-                mobileUrlInput.value = mobileUrl;
-                qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(mobileUrl)}`;
-            }
-        })
-        .catch(err => console.log('Info fetch error:', err));
+    // Fetch local network info on load (only meaningful when served from the PC)
+    if (!androidBridge) {
+        fetch('/api/info')
+            .then(res => res.json())
+            .then(data => {
+                if (data.mobileUrl) {
+                    mobileUrl = data.mobileUrl;
+                    mobileUrlInput.value = mobileUrl;
+                    qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(mobileUrl)}`;
+                }
+            })
+            .catch(err => console.log('Info fetch error:', err));
+    }
+
+    // Links shared to the Android app ("Compartir" > ClipSaver) prefill the input
+    window.clipSaverReceiveUrl = function(url) {
+        if (!url) return;
+        urlInput.value = url;
+        urlInput.focus();
+    };
+    if (androidBridge) {
+        window.clipSaverReceiveUrl(androidBridge.consumeSharedUrl());
+    }
 
     // Open/Close Mobile Modal
     if (mobileBtn) {
@@ -128,24 +146,12 @@ document.addEventListener('DOMContentLoaded', () => {
         resultContainer.classList.add('hidden');
 
         try {
-            const response = await fetch('/api/download', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ 
-                    url: url, 
-                    format: format,
-                    trimStart: trimStart || undefined,
-                    trimEnd: trimEnd || undefined
-                })
+            const data = await startDownload({
+                url: url,
+                format: format,
+                trimStart: trimStart || undefined,
+                trimEnd: trimEnd || undefined
             });
-
-            const data = await response.json();
-
-            if (!response.ok || data.error) {
-                throw new Error(data.error || 'Error al procesar la descarga.');
-            }
 
             showProgress(null);
             const result = await waitForJob(data.jobId);
@@ -157,6 +163,40 @@ document.addEventListener('DOMContentLoaded', () => {
             setLoadingState(false);
         }
     });
+
+    // Start a download job on the local server or on the Android bridge
+    async function startDownload(payload) {
+        let data;
+        if (androidBridge) {
+            data = JSON.parse(androidBridge.startDownload(JSON.stringify(payload)));
+        } else {
+            const response = await fetch('/api/download', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload)
+            });
+            data = await response.json();
+            if (!response.ok && !data.error) data.error = 'Error al procesar la descarga.';
+        }
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        return data;
+    }
+
+    async function fetchProgress(jobId) {
+        if (androidBridge) {
+            const progress = JSON.parse(androidBridge.getProgress(jobId));
+            if (progress.error && !progress.status) throw new Error(progress.error);
+            return progress;
+        }
+        const res = await fetch(`/api/progress/${jobId}`);
+        const progress = await res.json();
+        if (!res.ok) throw new Error(progress.error || 'Descarga no encontrada.');
+        return progress;
+    }
 
     function setLoadingState(isLoading) {
         if (isLoading) {
@@ -181,9 +221,7 @@ document.addEventListener('DOMContentLoaded', () => {
             await new Promise(resolve => setTimeout(resolve, 500));
             let progress;
             try {
-                const res = await fetch(`/api/progress/${jobId}`);
-                progress = await res.json();
-                if (!res.ok) throw new Error(progress.error || 'Descarga no encontrada.');
+                progress = await fetchProgress(jobId);
                 failures = 0;
             } catch (err) {
                 // Tolerate brief network hiccups (e.g. on mobile Wi-Fi)
@@ -279,14 +317,27 @@ document.addEventListener('DOMContentLoaded', () => {
         speedEl.textContent = [speedText, etaText].filter(Boolean).join(' · ');
     }
 
+    function escapeHtml(text) {
+        return String(text).replace(/[&<>"']/g, c => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        })[c]);
+    }
+
     function showSuccess(data) {
-        const filename = data.filename || 'Archivo descargado';
+        const filename = escapeHtml(data.filename || 'Archivo descargado');
         const downloadUrl = data.downloadUrl;
         const isAudio = /\.(mp3|m4a|wav|aac|ogg|opus|flac)$/i.test(filename);
         const fileIcon = isAudio ? 'fa-file-audio' : 'fa-file-video';
 
         let downloadButtonHtml = '';
-        if (downloadUrl) {
+        if (androidBridge && data.jobId) {
+            downloadButtonHtml = `
+                <button class="download-file-btn" onclick="ClipSaverAndroid.openFile('${escapeHtml(data.jobId)}')">
+                    <i class="fa-solid fa-play"></i>
+                    Abrir archivo
+                </button>
+            `;
+        } else if (downloadUrl) {
             downloadButtonHtml = `
                 <a href="${downloadUrl}" class="download-file-btn" download>
                     <i class="fa-solid fa-download"></i>
@@ -300,7 +351,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <i class="fa-solid fa-circle-check success-icon"></i>
                 <div>
                     <h3>¡Descarga Completada!</h3>
-                    <p>${data.message || 'El archivo se procesó con éxito.'}</p>
+                    <p>${escapeHtml(data.message || 'El archivo se procesó con éxito.')}</p>
                 </div>
                 <div class="file-badge">
                     <i class="fa-regular ${fileIcon}"></i> ${filename}
@@ -320,12 +371,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 <i class="fa-solid fa-circle-xmark error-icon"></i>
                 <div>
                     <h3>Error</h3>
-                    <p>${message}</p>
+                    <p>${escapeHtml(message)}</p>
                 </div>
                 <button class="try-again-btn" onclick="resetApp()">Intentar nuevamente</button>
             </div>
         `;
         resultContainer.classList.remove('hidden');
+    }
+
+    // Reopening the Android app while a download is still running shows its progress again
+    async function resumeJob(jobId) {
+        setLoadingState(true);
+        showProgress(null);
+        try {
+            showSuccess(await waitForJob(jobId));
+        } catch (error) {
+            showError(error.message || 'Error al procesar la descarga.');
+        } finally {
+            setLoadingState(false);
+        }
+    }
+
+    if (androidBridge) {
+        const activeJobId = androidBridge.activeJobId();
+        if (activeJobId) resumeJob(activeJobId);
     }
 
     // Expose resetApp globally for inline onclick handlers

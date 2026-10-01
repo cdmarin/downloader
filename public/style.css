@@ -558,6 +558,10 @@ button:disabled {
     border-radius: 50px;
     font-weight: 600;
     text-decoration: none;
+    border: none;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
     box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
     transition: all 0.3s ease;
 }
@@ -928,4 +932,9 @@ footer {
     .trim-divider {
         display: none;
     }
+}
+
+/* Inside the Android app there is no PC server to connect to */
+.android-app .mobile-nav-btn {
+    display: none;
 }

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Arrow pointing down into a tray -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M49,32h10v22h9l-14,15l-14,-15h9z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M34,64h6v8h28v-8h6v14h-40z" />
+</vector>
