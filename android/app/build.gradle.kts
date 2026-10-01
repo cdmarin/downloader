@@ -13,8 +13,8 @@ android {
         applicationId = "com.cdmarin.clipsaver"
         minSdk = 29
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
     }
 
     // Fixed key so every build (local or GitHub Actions) can update the installed app.
