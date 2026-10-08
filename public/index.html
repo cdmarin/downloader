@@ -44,6 +44,11 @@
                     </button>
                 </li>
                 <li role="none">
+                    <button type="button" role="menuitem" class="menu-item" data-action="volume">
+                        <i class="fa-solid fa-volume-high"></i> Ajustar volumen
+                    </button>
+                </li>
+                <li role="none">
                     <button type="button" role="menuitem" class="menu-item" data-action="about">
                         <i class="fa-solid fa-circle-info"></i> Acerca de ClipSaver
                     </button>
@@ -327,6 +332,112 @@
 
             <div id="speed-result" class="result-container hidden"></div>
         </section>
+
+        <!-- Volume Changer (menu > "Ajustar volumen"); volume.js -->
+        <section id="volume-view" class="tool-view hidden" aria-labelledby="volume-title">
+            <div class="tool-header">
+                <button type="button" class="back-btn" data-action="home" aria-label="Volver">
+                    <i class="fa-solid fa-arrow-left"></i>
+                </button>
+                <h2 id="volume-title"><i class="fa-solid fa-volume-high"></i> Ajustar volumen</h2>
+            </div>
+
+            <div class="glass-panel volume-panel">
+                <label id="volume-drop" class="file-drop" for="volume-file">
+                    <i class="fa-solid fa-volume-high"></i>
+                    <span class="file-drop-title">Elige un archivo de audio o vídeo</span>
+                    <span class="file-drop-hint">MP3, M4A, WAV, OGG, FLAC, MP4, MKV…</span>
+                    <input type="file" id="volume-file" accept="audio/*,video/*">
+                </label>
+
+                <div id="volume-editor" class="volume-editor hidden">
+                    <div class="trim-file-row">
+                        <i class="fa-regular fa-file-audio" id="volume-file-icon"></i>
+                        <span id="volume-file-name" class="trim-file-name"></span>
+                        <button type="button" id="volume-change-file" class="link-btn">Cambiar</button>
+                    </div>
+
+                    <div class="media-frame" id="volume-media-frame">
+                        <video id="volume-media" playsinline preload="metadata"></video>
+                        <div class="audio-placeholder" id="volume-audio-placeholder">
+                            <i class="fa-solid fa-volume-high"></i>
+                        </div>
+                        <p class="media-error hidden" id="volume-media-error">
+                            No se puede previsualizar este archivo aquí. Selecciona el volumen y pulsa Ajustar volumen.
+                        </p>
+                    </div>
+
+                    <div class="player-row">
+                        <button type="button" id="volume-play-btn" class="round-btn" aria-label="Reproducir">
+                            <i class="fa-solid fa-play"></i>
+                        </button>
+                        <span class="time-readout">
+                            <span id="volume-current-time">00:00</span> / <span id="volume-total-time">00:00</span>
+                        </span>
+                        <span class="speed-preview-tag" id="volume-preview-tag">
+                            <i class="fa-solid fa-volume-high"></i> Nivel: <strong id="volume-preview-val">150%</strong>
+                        </span>
+                    </div>
+
+                    <div class="speed-selector-section">
+                        <div class="speed-label-row">
+                            <label for="volume-custom-input" class="speed-section-label">Nivel de volumen:</label>
+                            <div class="speed-input-container" title="Escribe un porcentaje de volumen manual (ej: 150)">
+                                <input type="text" id="volume-custom-input" class="speed-custom-input" inputmode="numeric" autocomplete="off" spellcheck="false" placeholder="150" value="150" maxlength="4" aria-label="Escribir porcentaje de volumen manual">
+                                <span class="speed-input-unit">%</span>
+                            </div>
+                        </div>
+
+                        <div class="speed-presets" id="volume-presets" role="radiogroup" aria-label="Niveles de volumen predefinidos">
+                            <button type="button" class="speed-preset-btn" data-vol="25">25%</button>
+                            <button type="button" class="speed-preset-btn" data-vol="50">50%</button>
+                            <button type="button" class="speed-preset-btn" data-vol="75">75%</button>
+                            <button type="button" class="speed-preset-btn" data-vol="100">100%</button>
+                            <button type="button" class="speed-preset-btn active" data-vol="150">150%</button>
+                            <button type="button" class="speed-preset-btn" data-vol="200">200%</button>
+                            <button type="button" class="speed-preset-btn" data-vol="300">300%</button>
+                            <button type="button" class="speed-preset-btn" data-vol="400">400%</button>
+                        </div>
+
+                        <div class="speed-slider-row">
+                            <span class="slider-limit">0%</span>
+                            <input type="range" id="volume-slider" min="0" max="400" step="5" value="150" aria-label="Ajustar volumen" class="speed-range-slider">
+                            <span class="slider-limit">400%</span>
+                        </div>
+                    </div>
+
+                    <div class="speed-info-card">
+                        <div class="speed-info-item">
+                            <i class="fa-solid fa-sliders"></i>
+                            <div>
+                                <span class="info-label">Efecto de audio</span>
+                                <strong id="volume-effect-label">Aumento (+50%)</strong>
+                            </div>
+                        </div>
+                        <div class="speed-info-arrow">
+                            <i class="fa-solid fa-arrow-right"></i>
+                        </div>
+                        <div class="speed-info-item">
+                            <i class="fa-solid fa-wave-square"></i>
+                            <div>
+                                <span class="info-label">Ganancia en decibelios</span>
+                                <strong id="volume-db-label" class="speed-highlight-duration">+3.5 dB</strong>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <p class="speed-note">
+                        <i class="fa-solid fa-circle-info"></i> Puedes aumentarlo hasta un 400% (ideal para audios muy bajos) o reducirlo si está saturado.
+                    </p>
+
+                    <button type="button" id="volume-apply-btn" class="primary-btn">
+                        <i class="fa-solid fa-volume-high"></i> Ajustar volumen
+                    </button>
+                </div>
+            </div>
+
+            <div id="volume-result" class="result-container hidden"></div>
+        </section>
     </main>
 
     <!-- About (menu > "Acerca de ClipSaver") -->
@@ -377,5 +488,6 @@
     <script src="menu.js"></script>
     <script src="trimmer.js"></script>
     <script src="speed.js"></script>
+    <script src="volume.js"></script>
 </body>
 </html>

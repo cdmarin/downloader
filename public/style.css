@@ -1775,25 +1775,29 @@ footer p {
     }
 }
 
-/* ===== Speed Changer Tool ===== */
-.speed-panel {
+/* ===== Speed & Volume Tools ===== */
+.speed-panel,
+.volume-panel {
     display: flex;
     flex-direction: column;
     gap: 1rem;
 }
 
-.speed-panel:hover {
+.speed-panel:hover,
+.volume-panel:hover {
     transform: none;
 }
 
-.speed-editor {
+.speed-editor,
+.volume-editor {
     display: flex;
     flex-direction: column;
     gap: 1.15rem;
     min-width: 0;
 }
 
-.speed-editor.hidden {
+.speed-editor.hidden,
+.volume-editor.hidden {
     display: none;
 }
 

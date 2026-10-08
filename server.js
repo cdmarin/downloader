@@ -659,6 +659,110 @@ app.post('/api/speed', async (req, res) => {
     })();
 });
 
+// ---------------------------------------------------------------------------
+// Volume changer: increases or decreases volume of a local audio/video file with FFmpeg
+// (menu > "Ajustar volumen").
+
+function volumeArgs({ input, output, volumeFactor, hasVideo, inputExt }) {
+    const args = ['-hide_banner', '-nostdin', '-y', '-progress', 'pipe:1', '-nostats', '-i', input];
+    const volFilter = `volume=${Number(volumeFactor).toFixed(2)}`;
+    if (hasVideo) {
+        args.push(
+            '-c:v', 'copy',
+            '-filter:a', volFilter,
+            '-c:a', 'aac', '-b:a', '192k',
+            '-movflags', '+faststart'
+        );
+    } else {
+        args.push(
+            '-map', '0:a:0', '-vn',
+            '-filter:a', volFilter,
+            ...(AUDIO_ENCODERS[inputExt] || AUDIO_ENCODERS.m4a).args
+        );
+    }
+    args.push(output);
+    return args;
+}
+
+// Body: raw file (browser) or nothing (desktop app, which passes ?path=)
+app.post('/api/volume', async (req, res) => {
+    const { name, path: localPath } = req.query;
+    const hasVideo = req.query.hasVideo === '1';
+    let rawVol = parseFloat(req.query.volume) || 100;
+    // Support both percentage (150) and multiplier (1.5)
+    let volumePercent = rawVol > 10 ? Math.round(rawVol) : Math.round(rawVol * 100);
+    let volumeFactor = rawVol > 10 ? rawVol / 100 : rawVol;
+
+    if (volumeFactor < 0 || volumeFactor > 10.0) {
+        return res.status(400).json({ error: 'Nivel de volumen no válido.' });
+    }
+
+    let input;
+    let uploaded = false;
+    let originalName = name;
+    if (localPath) {
+        if (!config.desktopApp || !fs.existsSync(localPath)) {
+            return res.status(400).json({ error: 'No se encuentra el archivo.' });
+        }
+        input = localPath;
+        originalName = path.basename(localPath);
+    } else {
+        fs.mkdirSync(uploadsFolder, { recursive: true });
+        input = path.join(uploadsFolder, `${crypto.randomUUID()}${path.extname(String(name || '')).slice(0, 10)}`);
+        try {
+            await new Promise((resolve, reject) => {
+                const out = fs.createWriteStream(input);
+                req.pipe(out);
+                out.on('finish', resolve);
+                out.on('error', reject);
+                req.on('error', reject);
+            });
+        } catch (e) {
+            fs.rm(input, { force: true }, () => {});
+            return res.status(500).json({ error: 'No se pudo recibir el archivo.' });
+        }
+        uploaded = true;
+    }
+
+    const safeName = path.basename(String(originalName || 'archivo'));
+    const inputExt = path.extname(safeName).slice(1).toLowerCase();
+    const baseName = path.basename(safeName, path.extname(safeName)) || 'archivo';
+    const volLabel = `volumen ${volumePercent}%`;
+    const job = newJob();
+    res.json({ jobId: job.id });
+
+    (async () => {
+        try {
+            fs.mkdirSync(config.downloadsFolder, { recursive: true });
+            const output = uniqueOutputPath(config.downloadsFolder, baseName, trimOutputExt(hasVideo, inputExt), volLabel);
+            const args = volumeArgs({ input, output, volumeFactor, hasVideo, inputExt });
+            job.status = 'processing';
+            job.percent = 0;
+            console.log(`Changing volume of ${safeName} to ${volumePercent}% (${volumeFactor}x)`);
+            const mediaDuration = Number(req.query.mediaDuration);
+            const expectedDuration = Number.isFinite(mediaDuration) && mediaDuration > 0 ? mediaDuration : null;
+            await runFfmpeg(args, job, expectedDuration);
+
+            const filename = path.basename(output);
+            job.percent = 100;
+            job.result = {
+                success: true,
+                message: hasVideo ? `Vídeo con volumen al ${volumePercent}% guardado con éxito.` : `Audio con volumen al ${volumePercent}% guardado con éxito.`,
+                filename,
+                downloadUrl: `/api/file?name=${encodeURIComponent(filename)}`
+            };
+            job.status = 'done';
+        } catch (error) {
+            console.error('Volume change error:', error.message);
+            job.error = 'No se pudo ajustar el volumen del archivo. Comprueba que sea un archivo válido.';
+            job.status = 'error';
+        } finally {
+            if (uploaded) fs.rm(input, { force: true }, () => {});
+            setTimeout(() => jobs.delete(job.id), JOB_TTL_MS);
+        }
+    })();
+});
+
 // Starts the server; resolves with the http.Server once it is listening
 function start(overrides = {}) {
     Object.assign(config, overrides);

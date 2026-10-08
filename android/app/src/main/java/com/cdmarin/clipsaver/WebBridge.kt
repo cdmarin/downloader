@@ -40,6 +40,16 @@ class WebBridge(private val activity: MainActivity) {
             JSONObject().put("error", "Error al preparar el cambio de velocidad.").toString()
         }
 
+    /** Changes volume of the file last picked in the page (volume.js); progress is read with [getProgress]. */
+    @JavascriptInterface
+    fun startVolume(payload: String): String =
+        try {
+            DownloadEngine.startVolume(activity, activity.pickedFileUri, JSONObject(payload)).toString()
+        } catch (e: Exception) {
+            Log.e("ClipSaver", "Could not start volume change", e)
+            JSONObject().put("error", "Error al preparar el ajuste de volumen.").toString()
+        }
+
     @JavascriptInterface
     fun getProgress(jobId: String): String = DownloadEngine.snapshot(jobId).toString()
 

@@ -7,7 +7,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const aboutModal = document.getElementById('about-modal');
     const views = {
         trimmer: document.getElementById('trimmer-view'),
-        speed: document.getElementById('speed-view')
+        speed: document.getElementById('speed-view'),
+        volume: document.getElementById('volume-view')
     };
 
     function setMenuOpen(open) {

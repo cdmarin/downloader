@@ -48,7 +48,8 @@ object DownloadEngine {
         val isAudio: Boolean,
         val trimmed: Boolean,
         val isTrimJob: Boolean = false,
-        val isSpeedJob: Boolean = false
+        val isSpeedJob: Boolean = false,
+        val isVolumeJob: Boolean = false
     ) {
         val createdAt = System.currentTimeMillis()
         var status = "starting"
@@ -58,7 +59,7 @@ object DownloadEngine {
         var expectedTotal: Long? = null
         var speed: Double? = null
         var eta: Long? = null
-        var percent: Double? = null // trims/speed report progress as a percentage instead of bytes
+        var percent: Double? = null // trims/speed/volume report progress as a percentage instead of bytes
         var result: JSONObject? = null
         var error: String? = null
         var fileUri: Uri? = null
@@ -67,7 +68,13 @@ object DownloadEngine {
         val isActive get() = status != "done" && status != "error"
     }
 
-    data class NotificationState(val status: String, val percent: Int?, val isTrim: Boolean, val isSpeed: Boolean = false)
+    data class NotificationState(
+        val status: String,
+        val percent: Int?,
+        val isTrim: Boolean,
+        val isSpeed: Boolean = false,
+        val isVolume: Boolean = false
+    )
 
     /** Unpacks Python/FFmpeg on first launch and keeps yt-dlp up to date (once a day). */
     fun initialize(context: Context) {
@@ -148,21 +155,27 @@ object DownloadEngine {
 
     /** Most recent unfinished download, so the UI can resume it after the app is reopened. */
     fun activeJobId(): String? =
-        jobs.values.filter { !it.isTrimJob && !it.isSpeedJob && synchronized(it) { it.isActive } }.maxByOrNull { it.createdAt }?.id
+        jobs.values.filter { !it.isTrimJob && !it.isSpeedJob && !it.isVolumeJob && synchronized(it) { it.isActive } }.maxByOrNull { it.createdAt }?.id
 
     fun notificationState(): NotificationState? {
         val job = jobs.values.filter { synchronized(it) { it.isActive } }.maxByOrNull { it.createdAt }
             ?: return null
         val snapshot = snapshot(job.id)
         val status = snapshot.getString("status")
-        if (job.isTrimJob || job.isSpeedJob) {
+        if (job.isTrimJob || job.isSpeedJob || job.isVolumeJob) {
             val percent = synchronized(job) { job.percent }?.toInt()?.coerceIn(0, 100)
-            return NotificationState(status, percent, isTrim = job.isTrimJob, isSpeed = job.isSpeedJob)
+            return NotificationState(
+                status,
+                percent,
+                isTrim = job.isTrimJob,
+                isSpeed = job.isSpeedJob,
+                isVolume = job.isVolumeJob
+            )
         }
         val downloaded = snapshot.optLong("downloadedBytes")
         val total = snapshot.optLong("totalBytes", 0)
         val percent = if (total > 0 && status == "downloading") (downloaded * 100 / total).toInt().coerceIn(0, 100) else null
-        return NotificationState(status, percent, isTrim = false, isSpeed = false)
+        return NotificationState(status, percent, isTrim = false, isSpeed = false, isVolume = false)
     }
 
     fun savedFile(jobId: String): Pair<Uri, String>? {
@@ -575,6 +588,121 @@ object DownloadEngine {
                     "No se pudo iniciar FFmpeg. Prueba a reinstalar la app."
                 } else {
                     "No se pudo cambiar la velocidad del archivo. Comprueba que sea un audio o vídeo válido."
+                }
+                job.status = "error"
+            }
+        } finally {
+            jobDir.deleteRecursively()
+        }
+    }
+
+    // ----- Volume changer (menu > "Ajustar volumen"): same rules as volumeArgs() in server.js -----
+
+    private fun volumeArgs(
+        input: File,
+        output: File,
+        volumeFactor: Double,
+        hasVideo: Boolean,
+        inputExt: String
+    ): List<String> {
+        val volFilter = String.format(Locale.US, "volume=%.2f", volumeFactor)
+        val args = mutableListOf(
+            "-hide_banner", "-nostdin", "-y", "-progress", "pipe:1", "-nostats",
+            "-i", input.absolutePath
+        )
+        if (hasVideo) {
+            args += listOf(
+                "-c:v", "copy",
+                "-filter:a", volFilter,
+                "-c:a", "aac", "-b:a", "192k",
+                "-movflags", "+faststart"
+            )
+        } else {
+            args += listOf("-map", "0:a:0", "-vn", "-filter:a", volFilter) + (AUDIO_ENCODERS[inputExt] ?: DEFAULT_AUDIO_ENCODER).args
+        }
+        args += output.absolutePath
+        return args
+    }
+
+    /** Adjusts volume of [source] (the file picked in the page) by payload.volume. */
+    fun startVolume(context: Context, source: Uri?, payload: JSONObject): JSONObject {
+        if (source == null) {
+            return JSONObject().put("error", "Vuelve a elegir el archivo.")
+        }
+        val rawVol = payload.optDouble("volume", 100.0)
+        val volumeFactor = if (rawVol > 10.0) rawVol / 100.0 else rawVol
+        val volumePercent = if (rawVol > 10.0) rawVol.toInt() else (rawVol * 100).toInt()
+
+        if (volumeFactor < 0.0 || volumeFactor > 10.0) {
+            return JSONObject().put("error", "Nivel de volumen no válido.")
+        }
+        val hasVideo = payload.optString("hasVideo") == "1"
+        val mediaDuration = payload.optString("mediaDuration").toDoubleOrNull()
+
+        val job = Job(UUID.randomUUID().toString(), isAudio = !hasVideo, trimmed = false, isVolumeJob = true)
+        jobs[job.id] = job
+        Log.i(TAG, "Changing volume for $source to $volumePercent% (${volumeFactor}x)")
+
+        val appContext = context.applicationContext
+        DownloadService.start(appContext)
+        executor.execute {
+            runVolume(appContext, job, source, volumeFactor, volumePercent, hasVideo, mediaDuration)
+        }
+        return JSONObject().put("jobId", job.id)
+    }
+
+    private fun runVolume(
+        context: Context,
+        job: Job,
+        source: Uri,
+        volumeFactor: Double,
+        volumePercent: Int,
+        hasVideo: Boolean,
+        expectedDuration: Double?
+    ) {
+        val jobDir = File(context.noBackupFilesDir, "jobs/${job.id}")
+        try {
+            ready.await()
+            initError?.let { throw EngineInitException(it) }
+            jobDir.mkdirs()
+
+            val displayName = displayName(context, source)?.replace('/', '_') ?: "archivo"
+            val inputExt = displayName.substringAfterLast('.', "").lowercase(Locale.ROOT).take(10)
+            val input = File(jobDir, if (inputExt.isEmpty()) "input" else "input.$inputExt")
+            val stream = context.contentResolver.openInputStream(source) ?: throw IOException("Could not open $source")
+            stream.use { inp -> input.outputStream().use { inp.copyTo(it) } }
+
+            val baseName = (if ('.' in displayName) displayName.substringBeforeLast('.') else displayName)
+                .ifBlank { "archivo" }
+            val ext = trimOutputExt(hasVideo, inputExt)
+            val output = File(jobDir, "$baseName (volumen $volumePercent%).$ext")
+            synchronized(job) {
+                job.status = "processing"
+                job.percent = 0.0
+            }
+            runFfmpeg(context, volumeArgs(input, output, volumeFactor, hasVideo, inputExt), job, expectedDuration)
+
+            val mimeType = mimeTypeFor(output, !hasVideo)
+            val uri = saveToDownloads(context, output, mimeType)
+            val what = if (hasVideo) "Vídeo" else "Audio"
+            synchronized(job) {
+                job.fileUri = uri
+                job.mimeType = mimeType
+                job.percent = 100.0
+                job.result = JSONObject()
+                    .put("success", true)
+                    .put("message", "$what con volumen al $volumePercent% guardado con éxito. Guardado en Descargas/$DOWNLOADS_SUBFOLDER.")
+                    .put("filename", output.name)
+                    .put("jobId", job.id)
+                job.status = "done"
+            }
+        } catch (e: Throwable) {
+            Log.e(TAG, "Volume error", e)
+            synchronized(job) {
+                job.error = if (e is EngineInitException) {
+                    "No se pudo iniciar FFmpeg. Prueba a reinstalar la app."
+                } else {
+                    "No se pudo ajustar el volumen del archivo. Comprueba que sea un audio o vídeo válido."
                 }
                 job.status = "error"
             }
