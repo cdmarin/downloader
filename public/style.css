@@ -1835,14 +1835,53 @@ footer p {
     color: var(--text-main);
 }
 
-.speed-multiplier-badge {
-    background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+.speed-input-container {
+    display: inline-flex;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid var(--glass-border);
+    border-radius: 50px;
+    padding: 0.25rem 0.75rem 0.25rem 0.9rem;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+    transition: all 0.2s ease;
+    cursor: text;
+}
+
+.speed-input-container:hover {
+    background: rgba(255, 255, 255, 0.11);
+    border-color: rgba(99, 102, 241, 0.5);
+}
+
+.speed-input-container:focus-within {
+    border-color: var(--accent-1);
+    background: rgba(99, 102, 241, 0.18);
+    box-shadow: 0 0 14px rgba(99, 102, 241, 0.45);
+}
+
+.speed-custom-input {
+    width: 3.4rem;
+    background: transparent;
+    border: none;
     color: white;
+    font-family: inherit;
+    font-size: 1.1rem;
     font-weight: 800;
-    font-size: 1rem;
-    padding: 0.25rem 0.8rem;
-    border-radius: 20px;
-    box-shadow: 0 2px 10px rgba(99, 102, 241, 0.35);
+    text-align: right;
+    outline: none;
+    padding: 0;
+}
+
+.speed-custom-input::placeholder {
+    color: var(--text-muted);
+    opacity: 0.6;
+}
+
+.speed-input-unit {
+    color: var(--accent-2);
+    font-size: 1.1rem;
+    font-weight: 800;
+    margin-left: 0.15rem;
+    user-select: none;
 }
 
 .speed-presets {

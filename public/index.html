@@ -270,8 +270,11 @@
 
                     <div class="speed-selector-section">
                         <div class="speed-label-row">
-                            <span class="speed-section-label">Nueva velocidad:</span>
-                            <span class="speed-multiplier-badge" id="speed-display-badge">1.50x</span>
+                            <label for="speed-custom-input" class="speed-section-label">Nueva velocidad:</label>
+                            <div class="speed-input-container" title="Escribe una velocidad manual con dos decimales (ej: 1.15)">
+                                <input type="text" id="speed-custom-input" class="speed-custom-input" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="1.15" value="1.50" maxlength="5" aria-label="Escribir velocidad manual">
+                                <span class="speed-input-unit">x</span>
+                            </div>
                         </div>
 
                         <div class="speed-presets" id="speed-presets" role="radiogroup" aria-label="Velocidades predefinidas">
@@ -287,7 +290,7 @@
 
                         <div class="speed-slider-row">
                             <span class="slider-limit">0.25x</span>
-                            <input type="range" id="speed-slider" min="0.25" max="4.0" step="0.05" value="1.5" aria-label="Ajustar velocidad" class="speed-range-slider">
+                            <input type="range" id="speed-slider" min="0.25" max="4.0" step="0.01" value="1.5" aria-label="Ajustar velocidad" class="speed-range-slider">
                             <span class="slider-limit">4x</span>
                         </div>
                     </div>

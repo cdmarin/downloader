@@ -17,7 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const previewValEl = $('speed-preview-val');
     const presetsContainer = $('speed-presets');
     const slider = $('speed-slider');
-    const displayBadge = $('speed-display-badge');
+    const customInput = $('speed-custom-input');
     const origDurationEl = $('speed-original-duration');
     const newDurationEl = $('speed-new-duration');
     const applyBtn = $('speed-apply-btn');
@@ -44,7 +44,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return h > 0 ? `${h}:${base}` : base;
     }
 
-    function setSpeed(speedVal) {
+    function setSpeed(speedVal, fromInput = false) {
         const val = Math.max(0.25, Math.min(4.0, Number(speedVal) || 1.0));
         state.speed = val;
 
@@ -53,13 +53,17 @@ document.addEventListener('DOMContentLoaded', () => {
             media.playbackRate = val;
         } catch (e) { /* ignored if not loaded */ }
 
-        // Update badge and preview text
+        // Update custom input box if not currently being typed into
+        if (customInput && !fromInput && document.activeElement !== customInput) {
+            customInput.value = val.toFixed(2);
+        }
+
+        // Update preview readout
         const formattedSpeed = `${val.toFixed(2)}x`;
-        displayBadge.textContent = formattedSpeed;
         if (previewValEl) previewValEl.textContent = formattedSpeed;
 
         // Update slider value without looping events
-        if (slider && Math.abs(parseFloat(slider.value) - val) > 0.01) {
+        if (slider && Math.abs(parseFloat(slider.value) - val) > 0.005) {
             slider.value = val;
         }
 
@@ -67,7 +71,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (presetsContainer) {
             presetsContainer.querySelectorAll('.speed-preset-btn').forEach(btn => {
                 const btnSpeed = parseFloat(btn.dataset.speed);
-                btn.classList.toggle('active', Math.abs(btnSpeed - val) < 0.03);
+                btn.classList.toggle('active', Math.abs(btnSpeed - val) < 0.005);
             });
         }
 
@@ -196,10 +200,58 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Manual speed typing (two decimals, e.g. 1.15)
+    if (customInput) {
+        customInput.addEventListener('input', () => {
+            const raw = customInput.value.replace(',', '.').trim();
+            const num = parseFloat(raw);
+            if (Number.isFinite(num) && num > 0) {
+                state.speed = num;
+                try {
+                    media.playbackRate = Math.min(16, Math.max(0.0625, num));
+                } catch (e) {}
+
+                if (previewValEl) previewValEl.textContent = `${num.toFixed(2)}x`;
+                if (slider && num >= 0.25 && num <= 4.0) slider.value = num;
+
+                if (presetsContainer) {
+                    presetsContainer.querySelectorAll('.speed-preset-btn').forEach(btn => {
+                        const btnSpeed = parseFloat(btn.dataset.speed);
+                        btn.classList.toggle('active', Math.abs(btnSpeed - num) < 0.005);
+                    });
+                }
+                updateDurations();
+            }
+        });
+
+        customInput.addEventListener('blur', () => {
+            const raw = customInput.value.replace(',', '.').trim();
+            let num = parseFloat(raw);
+            if (!Number.isFinite(num) || num < 0.25) num = 0.25;
+            if (num > 4.0) num = 4.0;
+            setSpeed(num);
+        });
+
+        customInput.addEventListener('keydown', event => {
+            if (event.key === 'Enter') {
+                customInput.blur();
+            }
+        });
+    }
+
     // ----- Processing & execution -----
 
     applyBtn.addEventListener('click', async () => {
         if (state.busy || !state.file) return;
+
+        // Catch typed value if blur hasn't fired yet
+        if (customInput) {
+            const raw = customInput.value.replace(',', '.').trim();
+            const typed = parseFloat(raw);
+            if (Number.isFinite(typed) && typed >= 0.1 && typed <= 16.0) {
+                state.speed = typed;
+            }
+        }
 
         media.pause();
         const speedValue = Number(state.speed) || 1.0;
