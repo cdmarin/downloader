@@ -43,7 +43,13 @@ object DownloadEngine {
     private val executor = Executors.newCachedThreadPool()
     private val jobs = ConcurrentHashMap<String, Job>()
 
-    class Job(val id: String, val isAudio: Boolean, val trimmed: Boolean, val isTrimJob: Boolean = false) {
+    class Job(
+        val id: String,
+        val isAudio: Boolean,
+        val trimmed: Boolean,
+        val isTrimJob: Boolean = false,
+        val isSpeedJob: Boolean = false
+    ) {
         val createdAt = System.currentTimeMillis()
         var status = "starting"
         var completedBytes = 0L
@@ -52,7 +58,7 @@ object DownloadEngine {
         var expectedTotal: Long? = null
         var speed: Double? = null
         var eta: Long? = null
-        var percent: Double? = null // trims report progress as a percentage instead of bytes
+        var percent: Double? = null // trims/speed report progress as a percentage instead of bytes
         var result: JSONObject? = null
         var error: String? = null
         var fileUri: Uri? = null
@@ -61,7 +67,7 @@ object DownloadEngine {
         val isActive get() = status != "done" && status != "error"
     }
 
-    data class NotificationState(val status: String, val percent: Int?, val isTrim: Boolean)
+    data class NotificationState(val status: String, val percent: Int?, val isTrim: Boolean, val isSpeed: Boolean = false)
 
     /** Unpacks Python/FFmpeg on first launch and keeps yt-dlp up to date (once a day). */
     fun initialize(context: Context) {
@@ -142,21 +148,21 @@ object DownloadEngine {
 
     /** Most recent unfinished download, so the UI can resume it after the app is reopened. */
     fun activeJobId(): String? =
-        jobs.values.filter { !it.isTrimJob && synchronized(it) { it.isActive } }.maxByOrNull { it.createdAt }?.id
+        jobs.values.filter { !it.isTrimJob && !it.isSpeedJob && synchronized(it) { it.isActive } }.maxByOrNull { it.createdAt }?.id
 
     fun notificationState(): NotificationState? {
         val job = jobs.values.filter { synchronized(it) { it.isActive } }.maxByOrNull { it.createdAt }
             ?: return null
         val snapshot = snapshot(job.id)
         val status = snapshot.getString("status")
-        if (job.isTrimJob) {
+        if (job.isTrimJob || job.isSpeedJob) {
             val percent = synchronized(job) { job.percent }?.toInt()?.coerceIn(0, 100)
-            return NotificationState(status, percent, isTrim = true)
+            return NotificationState(status, percent, isTrim = job.isTrimJob, isSpeed = job.isSpeedJob)
         }
         val downloaded = snapshot.optLong("downloadedBytes")
         val total = snapshot.optLong("totalBytes", 0)
         val percent = if (total > 0 && status == "downloading") (downloaded * 100 / total).toInt().coerceIn(0, 100) else null
-        return NotificationState(status, percent, isTrim = false)
+        return NotificationState(status, percent, isTrim = false, isSpeed = false)
     }
 
     fun savedFile(jobId: String): Pair<Uri, String>? {
@@ -443,6 +449,138 @@ object DownloadEngine {
         }
         args += output.absolutePath
         return args
+    }
+
+    // ----- Speed changer (menu > "Cambiar velocidad"): same rules as speedArgs() in server.js -----
+
+    private fun buildAtempoFilter(speed: Double): String {
+        var s = speed
+        val filters = mutableListOf<String>()
+        while (s > 2.0) {
+            filters += "atempo=2.0"
+            s /= 2.0
+        }
+        while (s < 0.5) {
+            filters += "atempo=0.5"
+            s /= 0.5
+        }
+        val formatted = String.format(Locale.US, "%.4f", s).trimEnd('0').trimEnd('.')
+        filters += "atempo=$formatted"
+        return filters.joinToString(",")
+    }
+
+    private fun speedArgs(
+        input: File,
+        output: File,
+        speed: Double,
+        hasVideo: Boolean,
+        inputExt: String
+    ): List<String> {
+        val atempo = buildAtempoFilter(speed)
+        val setpts = String.format(Locale.US, "%.6f*PTS", 1.0 / speed)
+        val args = mutableListOf(
+            "-hide_banner", "-nostdin", "-y", "-progress", "pipe:1", "-nostats",
+            "-i", input.absolutePath
+        )
+        if (hasVideo) {
+            args += listOf(
+                "-map", "0:v:0", "-map", "0:a?",
+                "-filter:v", "setpts=$setpts",
+                "-filter:a", atempo,
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+                "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart"
+            )
+        } else {
+            args += listOf("-map", "0:a:0", "-vn", "-filter:a", atempo) + (AUDIO_ENCODERS[inputExt] ?: DEFAULT_AUDIO_ENCODER).args
+        }
+        args += output.absolutePath
+        return args
+    }
+
+    /** Changes speed of [source] (the file picked in the page) by payload.speed. */
+    fun startSpeed(context: Context, source: Uri?, payload: JSONObject): JSONObject {
+        if (source == null) {
+            return JSONObject().put("error", "Vuelve a elegir el archivo.")
+        }
+        val speed = payload.optDouble("speed", 1.0)
+        if (speed <= 0.1 || speed > 16.0) {
+            return JSONObject().put("error", "Velocidad no válida.")
+        }
+        val hasVideo = payload.optString("hasVideo") == "1"
+        val mediaDuration = payload.optString("mediaDuration").toDoubleOrNull()
+
+        val job = Job(UUID.randomUUID().toString(), isAudio = !hasVideo, trimmed = false, isSpeedJob = true)
+        jobs[job.id] = job
+        Log.i(TAG, "Changing speed for $source to ${speed}x")
+
+        val appContext = context.applicationContext
+        DownloadService.start(appContext)
+        executor.execute {
+            val expectedDuration = mediaDuration?.let { it / speed }
+            runSpeed(appContext, job, source, speed, hasVideo, expectedDuration)
+        }
+        return JSONObject().put("jobId", job.id)
+    }
+
+    private fun runSpeed(
+        context: Context,
+        job: Job,
+        source: Uri,
+        speed: Double,
+        hasVideo: Boolean,
+        expectedDuration: Double?
+    ) {
+        val jobDir = File(context.noBackupFilesDir, "jobs/${job.id}")
+        try {
+            ready.await()
+            initError?.let { throw EngineInitException(it) }
+            jobDir.mkdirs()
+
+            // FFmpeg needs a real file, so the picked document is copied first
+            val displayName = displayName(context, source)?.replace('/', '_') ?: "archivo"
+            val inputExt = displayName.substringAfterLast('.', "").lowercase(Locale.ROOT).take(10)
+            val input = File(jobDir, if (inputExt.isEmpty()) "input" else "input.$inputExt")
+            val stream = context.contentResolver.openInputStream(source) ?: throw IOException("Could not open $source")
+            stream.use { inp -> input.outputStream().use { inp.copyTo(it) } }
+
+            val baseName = (if ('.' in displayName) displayName.substringBeforeLast('.') else displayName)
+                .ifBlank { "archivo" }
+            val ext = trimOutputExt(hasVideo, inputExt)
+            val speedLabel = if (speed % 1.0 == 0.0) "${speed.toLong()}x" else "${speed}x"
+            val output = File(jobDir, "$baseName ($speedLabel).$ext")
+            synchronized(job) {
+                job.status = "processing"
+                job.percent = 0.0
+            }
+            runFfmpeg(context, speedArgs(input, output, speed, hasVideo, inputExt), job, expectedDuration)
+
+            val mimeType = mimeTypeFor(output, !hasVideo)
+            val uri = saveToDownloads(context, output, mimeType)
+            val what = if (hasVideo) "Vídeo" else "Audio"
+            synchronized(job) {
+                job.fileUri = uri
+                job.mimeType = mimeType
+                job.percent = 100.0
+                job.result = JSONObject()
+                    .put("success", true)
+                    .put("message", "$what modificado a $speedLabel con éxito. Guardado en Descargas/$DOWNLOADS_SUBFOLDER.")
+                    .put("filename", output.name)
+                    .put("jobId", job.id)
+                job.status = "done"
+            }
+        } catch (e: Throwable) {
+            Log.e(TAG, "Speed error", e)
+            synchronized(job) {
+                job.error = if (e is EngineInitException) {
+                    "No se pudo iniciar FFmpeg. Prueba a reinstalar la app."
+                } else {
+                    "No se pudo cambiar la velocidad del archivo. Comprueba que sea un audio o vídeo válido."
+                }
+                job.status = "error"
+            }
+        } finally {
+            jobDir.deleteRecursively()
+        }
     }
 
     // Runs the FFmpeg bundled by youtubedl-android the same way the library does for yt-dlp

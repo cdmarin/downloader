@@ -56,6 +56,7 @@ class DownloadService : Service() {
 
     private fun buildNotification(state: DownloadEngine.NotificationState?): android.app.Notification {
         val title = when {
+            state?.isSpeed == true -> getString(R.string.notification_speed)
             state?.isTrim == true -> getString(R.string.notification_trimming)
             state?.status == "downloading" -> getString(R.string.notification_downloading)
             state?.status == "processing" -> getString(R.string.notification_processing)

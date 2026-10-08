@@ -6,5 +6,6 @@
     <string name="notification_processing">Procesando archivo…</string>
     <string name="notification_preparing">Preparando descarga…</string>
     <string name="notification_trimming">Recortando…</string>
+    <string name="notification_speed">Cambiando velocidad…</string>
     <string name="no_app_to_open">No hay ninguna app para abrir este archivo</string>
 </resources>

@@ -39,6 +39,11 @@
                     </button>
                 </li>
                 <li role="none">
+                    <button type="button" role="menuitem" class="menu-item" data-action="speed">
+                        <i class="fa-solid fa-gauge-high"></i> Cambiar velocidad
+                    </button>
+                </li>
+                <li role="none">
                     <button type="button" role="menuitem" class="menu-item" data-action="about">
                         <i class="fa-solid fa-circle-info"></i> Acerca de ClipSaver
                     </button>
@@ -216,6 +221,109 @@
 
             <div id="trim-result" class="result-container hidden"></div>
         </section>
+
+        <!-- Speed Changer (menu > "Cambiar velocidad"); speed.js -->
+        <section id="speed-view" class="tool-view hidden" aria-labelledby="speed-title">
+            <div class="tool-header">
+                <button type="button" class="back-btn" data-action="home" aria-label="Volver">
+                    <i class="fa-solid fa-arrow-left"></i>
+                </button>
+                <h2 id="speed-title"><i class="fa-solid fa-gauge-high"></i> Cambiar velocidad</h2>
+            </div>
+
+            <div class="glass-panel speed-panel">
+                <label id="speed-drop" class="file-drop" for="speed-file">
+                    <i class="fa-solid fa-gauge-high"></i>
+                    <span class="file-drop-title">Elige un vídeo o audio</span>
+                    <span class="file-drop-hint">MP4, MOV, MKV, WEBM, MP3, M4A, WAV…</span>
+                    <input type="file" id="speed-file" accept="video/*,audio/*">
+                </label>
+
+                <div id="speed-editor" class="speed-editor hidden">
+                    <div class="trim-file-row">
+                        <i class="fa-regular fa-file-video" id="speed-file-icon"></i>
+                        <span id="speed-file-name" class="trim-file-name"></span>
+                        <button type="button" id="speed-change-file" class="link-btn">Cambiar</button>
+                    </div>
+
+                    <div class="media-frame" id="speed-media-frame">
+                        <video id="speed-media" playsinline preload="metadata"></video>
+                        <div class="audio-placeholder" id="speed-audio-placeholder">
+                            <i class="fa-solid fa-music"></i>
+                        </div>
+                        <p class="media-error hidden" id="speed-media-error">
+                            No se puede previsualizar este archivo aquí. Selecciona la velocidad y pulsa Aplicar velocidad.
+                        </p>
+                    </div>
+
+                    <div class="player-row">
+                        <button type="button" id="speed-play-btn" class="round-btn" aria-label="Reproducir">
+                            <i class="fa-solid fa-play"></i>
+                        </button>
+                        <span class="time-readout">
+                            <span id="speed-current-time">00:00</span> / <span id="speed-total-time">00:00</span>
+                        </span>
+                        <span class="speed-preview-tag" id="speed-preview-tag">
+                            <i class="fa-solid fa-forward"></i> Previsualizando a <strong id="speed-preview-val">1.50x</strong>
+                        </span>
+                    </div>
+
+                    <div class="speed-selector-section">
+                        <div class="speed-label-row">
+                            <span class="speed-section-label">Nueva velocidad:</span>
+                            <span class="speed-multiplier-badge" id="speed-display-badge">1.50x</span>
+                        </div>
+
+                        <div class="speed-presets" id="speed-presets" role="radiogroup" aria-label="Velocidades predefinidas">
+                            <button type="button" class="speed-preset-btn" data-speed="0.5">0.5x</button>
+                            <button type="button" class="speed-preset-btn" data-speed="0.75">0.75x</button>
+                            <button type="button" class="speed-preset-btn" data-speed="1.25">1.25x</button>
+                            <button type="button" class="speed-preset-btn active" data-speed="1.5">1.5x</button>
+                            <button type="button" class="speed-preset-btn" data-speed="1.75">1.75x</button>
+                            <button type="button" class="speed-preset-btn" data-speed="2.0">2x</button>
+                            <button type="button" class="speed-preset-btn" data-speed="2.5">2.5x</button>
+                            <button type="button" class="speed-preset-btn" data-speed="3.0">3x</button>
+                        </div>
+
+                        <div class="speed-slider-row">
+                            <span class="slider-limit">0.25x</span>
+                            <input type="range" id="speed-slider" min="0.25" max="4.0" step="0.05" value="1.5" aria-label="Ajustar velocidad" class="speed-range-slider">
+                            <span class="slider-limit">4x</span>
+                        </div>
+                    </div>
+
+                    <div class="speed-info-card">
+                        <div class="speed-info-item">
+                            <i class="fa-regular fa-clock"></i>
+                            <div>
+                                <span class="info-label">Duración actual</span>
+                                <strong id="speed-original-duration">—</strong>
+                            </div>
+                        </div>
+                        <div class="speed-info-arrow">
+                            <i class="fa-solid fa-arrow-right"></i>
+                        </div>
+                        <div class="speed-info-item">
+                            <i class="fa-solid fa-bolt"></i>
+                            <div>
+                                <span class="info-label">Nueva duración estimada</span>
+                                <strong id="speed-new-duration" class="speed-highlight-duration">—</strong>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <p class="speed-note">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> El tono de la voz se mantiene natural sin distorsiones ni efecto agudo.
+                    </p>
+
+                    <button type="button" id="speed-apply-btn" class="primary-btn">
+                        <i class="fa-solid fa-gauge-high"></i> Cambiar velocidad
+                    </button>
+                </div>
+            </div>
+
+            <div id="speed-result" class="result-container hidden"></div>
+        </section>
     </main>
 
     <!-- About (menu > "Acerca de ClipSaver") -->
@@ -265,5 +373,6 @@
     <script src="updates.js"></script>
     <script src="menu.js"></script>
     <script src="trimmer.js"></script>
+    <script src="speed.js"></script>
 </body>
 </html>

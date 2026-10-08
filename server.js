@@ -412,10 +412,10 @@ function trimArgs({ input, output, start, duration, hasVideo, inputExt }) {
 }
 
 // "Mi vídeo.mp4" -> "Mi vídeo (recorte).mp4", or "(recorte 2)" if that name is taken
-function uniqueOutputPath(folder, baseName, ext) {
-    let candidate = path.join(folder, `${baseName} (recorte).${ext}`);
+function uniqueOutputPath(folder, baseName, ext, tag = 'recorte') {
+    let candidate = path.join(folder, `${baseName} (${tag}).${ext}`);
     for (let i = 2; fs.existsSync(candidate); i++) {
-        candidate = path.join(folder, `${baseName} (recorte ${i}).${ext}`);
+        candidate = path.join(folder, `${baseName} (${tag} ${i}).${ext}`);
     }
     return candidate;
 }
@@ -532,6 +532,125 @@ app.post('/api/trim', async (req, res) => {
         } catch (error) {
             console.error('Trim error:', error.message);
             job.error = 'No se pudo recortar el archivo. Comprueba que sea un audio o vídeo válido.';
+            job.status = 'error';
+        } finally {
+            if (uploaded) fs.rm(input, { force: true }, () => {});
+            setTimeout(() => jobs.delete(job.id), JOB_TTL_MS);
+        }
+    })();
+});
+
+// ---------------------------------------------------------------------------
+// Speed changer: speeds up or slows down a local audio/video file with FFmpeg
+// (menu > "Cambiar velocidad").
+
+function buildAtempoFilter(speed) {
+    let s = speed;
+    const filters = [];
+    while (s > 2.0) {
+        filters.push('atempo=2.0');
+        s /= 2.0;
+    }
+    while (s < 0.5) {
+        filters.push('atempo=0.5');
+        s /= 0.5;
+    }
+    filters.push(`atempo=${s.toFixed(4).replace(/\.?0+$/, '')}`);
+    return filters.join(',');
+}
+
+function speedArgs({ input, output, speed, hasVideo, inputExt }) {
+    const atempo = buildAtempoFilter(speed);
+    const setpts = `${(1 / speed).toFixed(6)}*PTS`;
+    const args = ['-hide_banner', '-nostdin', '-y', '-progress', 'pipe:1', '-nostats', '-i', input];
+    if (hasVideo) {
+        args.push(
+            '-map', '0:v:0', '-map', '0:a?',
+            '-filter:v', `setpts=${setpts}`,
+            '-filter:a', atempo,
+            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20',
+            '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k',
+            '-movflags', '+faststart'
+        );
+    } else {
+        args.push(
+            '-map', '0:a:0', '-vn',
+            '-filter:a', atempo,
+            ...(AUDIO_ENCODERS[inputExt] || AUDIO_ENCODERS.m4a).args
+        );
+    }
+    args.push(output);
+    return args;
+}
+
+// Body: raw file (browser) or nothing (desktop app, which passes ?path=)
+app.post('/api/speed', async (req, res) => {
+    const { name, path: localPath } = req.query;
+    const hasVideo = req.query.hasVideo === '1';
+    const speed = parseFloat(req.query.speed) || 1.0;
+
+    if (speed <= 0.1 || speed > 16.0) {
+        return res.status(400).json({ error: 'Velocidad no válida.' });
+    }
+
+    let input;
+    let uploaded = false;
+    let originalName = name;
+    if (localPath) {
+        if (!config.desktopApp || !fs.existsSync(localPath)) {
+            return res.status(400).json({ error: 'No se encuentra el archivo.' });
+        }
+        input = localPath;
+        originalName = path.basename(localPath);
+    } else {
+        fs.mkdirSync(uploadsFolder, { recursive: true });
+        input = path.join(uploadsFolder, `${crypto.randomUUID()}${path.extname(String(name || '')).slice(0, 10)}`);
+        try {
+            await new Promise((resolve, reject) => {
+                const out = fs.createWriteStream(input);
+                req.pipe(out);
+                out.on('finish', resolve);
+                out.on('error', reject);
+                req.on('error', reject);
+            });
+        } catch (e) {
+            fs.rm(input, { force: true }, () => {});
+            return res.status(500).json({ error: 'No se pudo recibir el archivo.' });
+        }
+        uploaded = true;
+    }
+
+    const safeName = path.basename(String(originalName || 'archivo'));
+    const inputExt = path.extname(safeName).slice(1).toLowerCase();
+    const baseName = path.basename(safeName, path.extname(safeName)) || 'archivo';
+    const speedLabel = speed % 1 === 0 ? `${speed}x` : `${speed}x`;
+    const job = newJob();
+    res.json({ jobId: job.id });
+
+    (async () => {
+        try {
+            fs.mkdirSync(config.downloadsFolder, { recursive: true });
+            const output = uniqueOutputPath(config.downloadsFolder, baseName, trimOutputExt(hasVideo, inputExt), speedLabel);
+            const args = speedArgs({ input, output, speed, hasVideo, inputExt });
+            job.status = 'processing';
+            job.percent = 0;
+            console.log(`Changing speed of ${safeName} to ${speed}x`);
+            const mediaDuration = Number(req.query.mediaDuration);
+            const expectedDuration = Number.isFinite(mediaDuration) && mediaDuration > 0 ? mediaDuration / speed : null;
+            await runFfmpeg(args, job, expectedDuration);
+
+            const filename = path.basename(output);
+            job.percent = 100;
+            job.result = {
+                success: true,
+                message: hasVideo ? `Vídeo modificado a ${speedLabel} con éxito.` : `Audio modificado a ${speedLabel} con éxito.`,
+                filename,
+                downloadUrl: `/api/file?name=${encodeURIComponent(filename)}`
+            };
+            job.status = 'done';
+        } catch (error) {
+            console.error('Speed change error:', error.message);
+            job.error = 'No se pudo cambiar la velocidad del archivo. Comprueba que sea un audio o vídeo válido.';
             job.status = 'error';
         } finally {
             if (uploaded) fs.rm(input, { force: true }, () => {});

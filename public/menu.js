@@ -5,7 +5,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const menu = document.getElementById('app-menu');
     const menuBtn = document.getElementById('menu-btn');
     const aboutModal = document.getElementById('about-modal');
-    const views = { trimmer: document.getElementById('trimmer-view') };
+    const views = {
+        trimmer: document.getElementById('trimmer-view'),
+        speed: document.getElementById('speed-view')
+    };
 
     function setMenuOpen(open) {
         menu.classList.toggle('open', open);

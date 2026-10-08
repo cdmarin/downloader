@@ -4,3 +4,4 @@ downloads/*
 *.log
 .env
 desktop/dist/
+.claude/

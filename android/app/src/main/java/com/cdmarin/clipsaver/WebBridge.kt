@@ -30,6 +30,16 @@ class WebBridge(private val activity: MainActivity) {
             JSONObject().put("error", "Error al preparar el recorte.").toString()
         }
 
+    /** Changes speed of the file last picked in the page (speed.js); progress is read with [getProgress]. */
+    @JavascriptInterface
+    fun startSpeed(payload: String): String =
+        try {
+            DownloadEngine.startSpeed(activity, activity.pickedFileUri, JSONObject(payload)).toString()
+        } catch (e: Exception) {
+            Log.e("ClipSaver", "Could not start speed change", e)
+            JSONObject().put("error", "Error al preparar el cambio de velocidad.").toString()
+        }
+
     @JavascriptInterface
     fun getProgress(jobId: String): String = DownloadEngine.snapshot(jobId).toString()
 
