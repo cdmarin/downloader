@@ -104,6 +104,9 @@ class MainActivity : Activity() {
                     .addCategory(Intent.CATEGORY_OPENABLE)
                     .setType("*/*")
                     .putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes.toTypedArray())
+                if (params.mode == FileChooserParams.MODE_OPEN_MULTIPLE) {
+                    intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                }
                 return try {
                     @Suppress("DEPRECATION")
                     startActivityForResult(intent, REQUEST_PICK_FILE)
@@ -136,6 +139,24 @@ class MainActivity : Activity() {
         if (webView.canGoBack()) webView.goBack() else moveTaskToBack(true)
     }
 
+    data class PickedFileItem(val uri: Uri, val name: String, val size: Long)
+
+    val pickedFilesHistory = java.util.Collections.synchronizedList(mutableListOf<PickedFileItem>())
+
+    fun resolvePickedUris(names: List<String>): List<Uri> {
+        val result = mutableListOf<Uri>()
+        val pool = synchronized(pickedFilesHistory) { ArrayList(pickedFilesHistory) }
+        for (name in names) {
+            val idx = pool.indexOfFirst { it.name.equals(name, ignoreCase = true) }
+            if (idx != -1) {
+                result.add(pool.removeAt(idx).uri)
+            } else if (pool.isNotEmpty()) {
+                result.add(pool.removeAt(0).uri)
+            }
+        }
+        return result
+    }
+
     @Deprecated("Activity result API needs AndroidX Activity; this app uses the platform Activity")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         if (requestCode != REQUEST_PICK_FILE) {
@@ -143,9 +164,26 @@ class MainActivity : Activity() {
             super.onActivityResult(requestCode, resultCode, data)
             return
         }
-        val uri = data?.data.takeIf { resultCode == RESULT_OK }
-        if (uri != null) pickedFileUri = uri
-        fileChooserCallback?.onReceiveValue(uri?.let { arrayOf(it) })
+        val uris = mutableListOf<Uri>()
+        if (resultCode == RESULT_OK && data != null) {
+            data.data?.let { uris.add(it) }
+            val clipData = data.clipData
+            if (clipData != null) {
+                for (i in 0 until clipData.itemCount) {
+                    val u = clipData.getItemAt(i).uri
+                    if (u != null && !uris.contains(u)) uris.add(u)
+                }
+            }
+        }
+        if (uris.isNotEmpty()) {
+            pickedFileUri = uris.first()
+            for (u in uris) {
+                val name = DownloadEngine.displayName(this, u) ?: u.lastPathSegment ?: "archivo"
+                val size = DownloadEngine.fileSize(this, u)
+                pickedFilesHistory.add(PickedFileItem(u, name, size))
+            }
+        }
+        fileChooserCallback?.onReceiveValue(if (uris.isEmpty()) null else uris.toTypedArray())
         fileChooserCallback = null
     }
 

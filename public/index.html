@@ -49,6 +49,11 @@
                     </button>
                 </li>
                 <li role="none">
+                    <button type="button" role="menuitem" class="menu-item" data-action="merge">
+                        <i class="fa-solid fa-layer-group"></i> Combinar archivos
+                    </button>
+                </li>
+                <li role="none">
                     <button type="button" role="menuitem" class="menu-item" data-action="about">
                         <i class="fa-solid fa-circle-info"></i> Acerca de ClipSaver
                     </button>
@@ -438,6 +443,71 @@
 
             <div id="volume-result" class="result-container hidden"></div>
         </section>
+
+        <!-- File Combiner / Merger (menu > "Combinar archivos"); merge.js -->
+        <section id="merge-view" class="tool-view hidden" aria-labelledby="merge-title">
+            <div class="tool-header">
+                <button type="button" class="back-btn" data-action="home" aria-label="Volver">
+                    <i class="fa-solid fa-arrow-left"></i>
+                </button>
+                <h2 id="merge-title"><i class="fa-solid fa-layer-group"></i> Combinar archivos</h2>
+            </div>
+
+            <div class="glass-panel merge-panel">
+                <label id="merge-drop" class="file-drop" for="merge-file">
+                    <i class="fa-solid fa-layer-group"></i>
+                    <span class="file-drop-title">Elige varios archivos de audio o vídeo para unir</span>
+                    <span class="file-drop-hint">MP3, M4A, WAV, OGG, MP4, MKV… (selecciona 2 o más)</span>
+                    <input type="file" id="merge-file" accept="audio/*,video/*" multiple>
+                </label>
+
+                <div id="merge-editor" class="merge-editor hidden">
+                    <div class="merge-toolbar">
+                        <div class="merge-summary-info">
+                            <span class="merge-count-badge" id="merge-count-badge">0 archivos</span>
+                            <span class="merge-duration-tag" id="merge-duration-tag">
+                                <i class="fa-regular fa-clock"></i> <strong id="merge-total-duration">00:00</strong>
+                            </span>
+                        </div>
+                        <div class="merge-toolbar-actions">
+                            <label for="merge-add-file" class="merge-add-btn" title="Añadir más audios o vídeos">
+                                <i class="fa-solid fa-plus"></i> Añadir más
+                                <input type="file" id="merge-add-file" accept="audio/*,video/*" multiple class="hidden-input">
+                            </label>
+                            <button type="button" id="merge-clear-btn" class="merge-clear-btn" title="Limpiar lista">
+                                <i class="fa-regular fa-trash-can"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="merge-list" class="merge-list" role="list" aria-label="Lista de archivos a combinar">
+                        <!-- Dynamic items -->
+                    </div>
+
+                    <div class="merge-options-card">
+                        <span class="merge-options-label">Formato del archivo final:</span>
+                        <div class="merge-format-toggle" role="radiogroup" aria-label="Formato de salida">
+                            <button type="button" class="merge-format-btn active" data-format="video" id="merge-fmt-video">
+                                <i class="fa-solid fa-video"></i> Vídeo (.mp4)
+                            </button>
+                            <button type="button" class="merge-format-btn" data-format="audio" id="merge-fmt-audio">
+                                <i class="fa-solid fa-music"></i> Audio (.mp3)
+                            </button>
+                        </div>
+                    </div>
+
+                    <p class="speed-note">
+                        <i class="fa-solid fa-circle-info"></i> Usa las flechas para ordenar los archivos en la secuencia que quieras unir.
+                    </p>
+
+                    <button type="button" id="merge-apply-btn" class="primary-btn">
+                        <i class="fa-solid fa-layer-group"></i> Unir archivos
+                    </button>
+                </div>
+            </div>
+
+            <div id="merge-result" class="result-container hidden"></div>
+        </section>
     </main>
 
     <!-- About (menu > "Acerca de ClipSaver") -->
@@ -489,5 +559,6 @@
     <script src="trimmer.js"></script>
     <script src="speed.js"></script>
     <script src="volume.js"></script>
+    <script src="merge.js"></script>
 </body>
 </html>

@@ -50,6 +50,25 @@ class WebBridge(private val activity: MainActivity) {
             JSONObject().put("error", "Error al preparar el ajuste de volumen.").toString()
         }
 
+    /** Merges multiple files picked in the page (merge.js); progress is read with [getProgress]. */
+    @JavascriptInterface
+    fun startMerge(payload: String): String =
+        try {
+            val json = JSONObject(payload)
+            val names = mutableListOf<String>()
+            val filesArr = json.optJSONArray("files")
+            if (filesArr != null) {
+                for (i in 0 until filesArr.length()) {
+                    names.add(filesArr.getString(i))
+                }
+            }
+            val uris = activity.resolvePickedUris(names)
+            DownloadEngine.startMerge(activity, uris, json).toString()
+        } catch (e: Exception) {
+            Log.e("ClipSaver", "Could not start merge", e)
+            JSONObject().put("error", "Error al preparar la combinación de archivos.").toString()
+        }
+
     @JavascriptInterface
     fun getProgress(jobId: String): String = DownloadEngine.snapshot(jobId).toString()
 

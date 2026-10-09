@@ -56,6 +56,7 @@ class DownloadService : Service() {
 
     private fun buildNotification(state: DownloadEngine.NotificationState?): android.app.Notification {
         val title = when {
+            state?.isMerge == true -> getString(R.string.notification_merge)
             state?.isVolume == true -> getString(R.string.notification_volume)
             state?.isSpeed == true -> getString(R.string.notification_speed)
             state?.isTrim == true -> getString(R.string.notification_trimming)

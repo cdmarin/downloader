@@ -2,6 +2,7 @@ package com.cdmarin.clipsaver
 
 import android.content.ContentValues
 import android.content.Context
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
@@ -49,7 +50,8 @@ object DownloadEngine {
         val trimmed: Boolean,
         val isTrimJob: Boolean = false,
         val isSpeedJob: Boolean = false,
-        val isVolumeJob: Boolean = false
+        val isVolumeJob: Boolean = false,
+        val isMergeJob: Boolean = false
     ) {
         val createdAt = System.currentTimeMillis()
         var status = "starting"
@@ -73,7 +75,8 @@ object DownloadEngine {
         val percent: Int?,
         val isTrim: Boolean,
         val isSpeed: Boolean = false,
-        val isVolume: Boolean = false
+        val isVolume: Boolean = false,
+        val isMerge: Boolean = false
     )
 
     /** Unpacks Python/FFmpeg on first launch and keeps yt-dlp up to date (once a day). */
@@ -155,27 +158,28 @@ object DownloadEngine {
 
     /** Most recent unfinished download, so the UI can resume it after the app is reopened. */
     fun activeJobId(): String? =
-        jobs.values.filter { !it.isTrimJob && !it.isSpeedJob && !it.isVolumeJob && synchronized(it) { it.isActive } }.maxByOrNull { it.createdAt }?.id
+        jobs.values.filter { !it.isTrimJob && !it.isSpeedJob && !it.isVolumeJob && !it.isMergeJob && synchronized(it) { it.isActive } }.maxByOrNull { it.createdAt }?.id
 
     fun notificationState(): NotificationState? {
         val job = jobs.values.filter { synchronized(it) { it.isActive } }.maxByOrNull { it.createdAt }
             ?: return null
         val snapshot = snapshot(job.id)
         val status = snapshot.getString("status")
-        if (job.isTrimJob || job.isSpeedJob || job.isVolumeJob) {
+        if (job.isTrimJob || job.isSpeedJob || job.isVolumeJob || job.isMergeJob) {
             val percent = synchronized(job) { job.percent }?.toInt()?.coerceIn(0, 100)
             return NotificationState(
                 status,
                 percent,
                 isTrim = job.isTrimJob,
                 isSpeed = job.isSpeedJob,
-                isVolume = job.isVolumeJob
+                isVolume = job.isVolumeJob,
+                isMerge = job.isMergeJob
             )
         }
         val downloaded = snapshot.optLong("downloadedBytes")
         val total = snapshot.optLong("totalBytes", 0)
         val percent = if (total > 0 && status == "downloading") (downloaded * 100 / total).toInt().coerceIn(0, 100) else null
-        return NotificationState(status, percent, isTrim = false, isSpeed = false, isVolume = false)
+        return NotificationState(status, percent, isTrim = false, isSpeed = false, isVolume = false, isMerge = false)
     }
 
     fun savedFile(jobId: String): Pair<Uri, String>? {
@@ -711,6 +715,171 @@ object DownloadEngine {
         }
     }
 
+    // ----- File combiner / merger (menu > "Combinar archivos"): same rules as in server.js -----
+
+    private fun mergeArgs(
+        inputs: List<File>,
+        output: File,
+        isAudioOnly: Boolean
+    ): List<String> {
+        val args = mutableListOf(
+            "-hide_banner", "-nostdin", "-y", "-progress", "pipe:1", "-nostats"
+        )
+        for (file in inputs) {
+            args += listOf("-i", file.absolutePath)
+        }
+
+        var dummyIndex = inputs.size
+        val audioInputIndexMap = mutableListOf<String>()
+
+        for (i in inputs.indices) {
+            val file = inputs[i]
+            var hasAudio = true
+            var durationSec = 2
+            try {
+                val mmr = MediaMetadataRetriever()
+                mmr.setDataSource(file.absolutePath)
+                hasAudio = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO) != null
+                val durMs = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 2000L
+                durationSec = Math.max(1, (durMs / 1000L).toInt())
+                mmr.release()
+            } catch (ignored: Throwable) {}
+
+            if (!hasAudio && !isAudioOnly) {
+                args += listOf("-f", "lavfi", "-t", durationSec.toString(), "-i", "anullsrc=channel_layout=stereo:sample_rate=44100")
+                audioInputIndexMap.add("$dummyIndex:a")
+                dummyIndex++
+            } else {
+                audioInputIndexMap.add("$i:a")
+            }
+        }
+
+        val n = inputs.size
+        val filterParts = mutableListOf<String>()
+
+        if (isAudioOnly) {
+            for (i in 0 until n) {
+                filterParts.add("[$i:a]aformat=sample_rates=44100:channel_layouts=stereo[a$i]")
+            }
+            val ins = (0 until n).joinToString("") { "[a$it]" }
+            filterParts.add("${ins}concat=n=$n:v=0:a=1[outa]")
+            args += listOf(
+                "-filter_complex", filterParts.joinToString(";"),
+                "-map", "[outa]",
+                "-c:a", "libmp3lame", "-b:a", "192k"
+            )
+        } else {
+            for (i in 0 until n) {
+                filterParts.add("[$i:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30[v$i]")
+                val aSrc = audioInputIndexMap[i]
+                filterParts.add("[$aSrc]aformat=sample_rates=44100:channel_layouts=stereo[a$i]")
+            }
+            val ins = (0 until n).joinToString("") { "[v$it][a$it]" }
+            filterParts.add("${ins}concat=n=$n:v=1:a=1[outv][outa]")
+            args += listOf(
+                "-filter_complex", filterParts.joinToString(";"),
+                "-map", "[outv]",
+                "-map", "[outa]",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
+                "-c:a", "aac", "-b:a", "192k",
+                "-movflags", "+faststart"
+            )
+        }
+        args += output.absolutePath
+        return args
+    }
+
+    /** Merges multiple files picked in the page into a single audio or video file. */
+    fun startMerge(context: Context, sources: List<Uri>, payload: JSONObject): JSONObject {
+        if (sources.size < 2) {
+            return JSONObject().put("error", "Selecciona al menos 2 archivos para combinar.")
+        }
+        val outputType = payload.optString("outputType", "video").lowercase(Locale.ROOT)
+        val isAudio = outputType == "audio"
+        val mediaDuration = payload.optString("mediaDuration").toDoubleOrNull()
+
+        val job = Job(UUID.randomUUID().toString(), isAudio = isAudio, trimmed = false, isMergeJob = true)
+        jobs[job.id] = job
+        Log.i(TAG, "Starting merge of ${sources.size} files into $outputType")
+
+        val appContext = context.applicationContext
+        DownloadService.start(appContext)
+        executor.execute {
+            runMerge(appContext, job, sources, outputType, mediaDuration)
+        }
+        return JSONObject().put("jobId", job.id)
+    }
+
+    private fun runMerge(
+        context: Context,
+        job: Job,
+        sources: List<Uri>,
+        outputType: String,
+        expectedDuration: Double?
+    ) {
+        val jobDir = File(context.noBackupFilesDir, "jobs/${job.id}")
+        try {
+            ready.await()
+            initError?.let { throw EngineInitException(it) }
+            jobDir.mkdirs()
+
+            val isAudio = outputType == "audio"
+            val copiedFiles = mutableListOf<File>()
+            var firstDisplayName = "archivo"
+
+            for ((index, uri) in sources.withIndex()) {
+                val name = displayName(context, uri)?.replace('/', '_') ?: "archivo_$index"
+                if (index == 0) firstDisplayName = name
+                val ext = name.substringAfterLast('.', "").lowercase(Locale.ROOT).take(10)
+                val dest = File(jobDir, "input_$index" + if (ext.isNotEmpty()) ".$ext" else "")
+                val stream = context.contentResolver.openInputStream(uri)
+                    ?: throw IOException("Could not open $uri")
+                stream.use { inp -> dest.outputStream().use { inp.copyTo(it) } }
+                copiedFiles.add(dest)
+            }
+
+            val baseName = (if ('.' in firstDisplayName) firstDisplayName.substringBeforeLast('.') else firstDisplayName)
+                .ifBlank { "archivos" }
+            val ext = if (isAudio) "mp3" else "mp4"
+            val output = File(jobDir, "$baseName (combinado).$ext")
+
+            synchronized(job) {
+                job.status = "processing"
+                job.percent = 0.0
+            }
+
+            val args = mergeArgs(copiedFiles, output, isAudio)
+            runFfmpeg(context, args, job, expectedDuration)
+
+            val mimeType = if (isAudio) "audio/mpeg" else "video/mp4"
+            val uri = saveToDownloads(context, output, mimeType)
+            val what = if (isAudio) "Audio combinado" else "Vídeo combinado"
+            synchronized(job) {
+                job.fileUri = uri
+                job.mimeType = mimeType
+                job.percent = 100.0
+                job.result = JSONObject()
+                    .put("success", true)
+                    .put("message", "$what (${copiedFiles.size} archivos) guardado con éxito en Descargas/$DOWNLOADS_SUBFOLDER.")
+                    .put("filename", output.name)
+                    .put("jobId", job.id)
+                job.status = "done"
+            }
+        } catch (e: Throwable) {
+            Log.e(TAG, "Merge error", e)
+            synchronized(job) {
+                job.error = if (e is EngineInitException) {
+                    "No se pudo iniciar FFmpeg. Prueba a reinstalar la app."
+                } else {
+                    "No se pudieron combinar los archivos seleccionados."
+                }
+                job.status = "error"
+            }
+        } finally {
+            jobDir.deleteRecursively()
+        }
+    }
+
     // Runs the FFmpeg bundled by youtubedl-android the same way the library does for yt-dlp
     private fun runFfmpeg(context: Context, args: List<String>, job: Job, durationSec: Double?) {
         val ffmpeg = File(context.applicationInfo.nativeLibraryDir, "libffmpeg.so")
@@ -742,10 +911,15 @@ object DownloadEngine {
         }
     }
 
-    private fun displayName(context: Context, uri: Uri): String? =
+    fun displayName(context: Context, uri: Uri): String? =
         context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
             if (cursor.moveToFirst()) cursor.getString(0) else null
         }
+
+    fun fileSize(context: Context, uri: Uri): Long =
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getLong(0) else 0L
+        } ?: 0L
 
     private fun seconds(value: Double): String = String.format(Locale.US, "%.3f", value)
 

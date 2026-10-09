@@ -8,7 +8,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const views = {
         trimmer: document.getElementById('trimmer-view'),
         speed: document.getElementById('speed-view'),
-        volume: document.getElementById('volume-view')
+        volume: document.getElementById('volume-view'),
+        merge: document.getElementById('merge-view')
     };
 
     function setMenuOpen(open) {

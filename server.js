@@ -5,7 +5,7 @@ const path = require('path');
 const os = require('os');
 const fs = require('fs');
 const crypto = require('crypto');
-const { spawn } = require('child_process');
+const { spawn, execFile } = require('child_process');
 
 // Detect FFmpeg path from ffmpeg-static or environment
 let ffmpegPath = null;
@@ -758,6 +758,188 @@ app.post('/api/volume', async (req, res) => {
             job.status = 'error';
         } finally {
             if (uploaded) fs.rm(input, { force: true }, () => {});
+            setTimeout(() => jobs.delete(job.id), JOB_TTL_MS);
+        }
+    })();
+});
+
+// ---------------------------------------------------------------------------
+// File Combiner / Merger: combines multiple audio or video files into one
+// (menu > "Combinar archivos").
+
+// Helper to probe streams and duration of a media file
+function probeMedia(filePath) {
+    return new Promise((resolve) => {
+        execFile(config.ffmpegPath || 'ffmpeg', ['-hide_banner', '-i', filePath], (err, stdout, stderr) => {
+            const text = (stderr || '') + (stdout || '');
+            const hasVideo = /Stream #\d+:\d+.*Video:/.test(text);
+            const hasAudio = /Stream #\d+:\d+.*Audio:/.test(text);
+            const durMatch = /Duration:\s*(\d+):(\d+):(\d+(\.\d+)?)/.exec(text);
+            const duration = durMatch ? (+durMatch[1] * 3600 + +durMatch[2] * 60 + +durMatch[3]) : null;
+            resolve({ hasVideo, hasAudio, duration });
+        });
+    });
+}
+
+function mergeArgs({ inputs, output, isAudioOnly }) {
+    const args = ['-hide_banner', '-nostdin', '-y', '-progress', 'pipe:1', '-nostats'];
+    for (const inp of inputs) {
+        args.push('-i', inp.path);
+    }
+    let dummyIndex = inputs.length;
+    const audioInputIndexMap = [];
+    for (let i = 0; i < inputs.length; i++) {
+        if (!inputs[i].hasAudio && !isAudioOnly) {
+            const dur = Math.max(1, Math.round(inputs[i].duration || 2));
+            args.push('-f', 'lavfi', '-t', String(dur), '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100');
+            audioInputIndexMap.push({ stream: `${dummyIndex}:a` });
+            dummyIndex++;
+        } else {
+            audioInputIndexMap.push({ stream: `${i}:a` });
+        }
+    }
+    const n = inputs.length;
+    const filterParts = [];
+    if (isAudioOnly) {
+        for (let i = 0; i < n; i++) {
+            filterParts.push(`[${i}:a]aformat=sample_rates=44100:channel_layouts=stereo[a${i}]`);
+        }
+        filterParts.push(`${inputs.map((_, i) => `[a${i}]`).join('')}concat=n=${n}:v=0:a=1[outa]`);
+        args.push(
+            '-filter_complex', filterParts.join(';'),
+            '-map', '[outa]',
+            '-c:a', 'libmp3lame', '-b:a', '192k'
+        );
+    } else {
+        for (let i = 0; i < n; i++) {
+            filterParts.push(`[${i}:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30[v${i}]`);
+            const aSrc = audioInputIndexMap[i].stream;
+            filterParts.push(`[${aSrc}]aformat=sample_rates=44100:channel_layouts=stereo[a${i}]`);
+        }
+        filterParts.push(`${inputs.map((_, i) => `[v${i}][a${i}]`).join('')}concat=n=${n}:v=1:a=1[outv][outa]`);
+        args.push(
+            '-filter_complex', filterParts.join(';'),
+            '-map', '[outv]',
+            '-map', '[outa]',
+            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '22',
+            '-c:a', 'aac', '-b:a', '192k',
+            '-movflags', '+faststart'
+        );
+    }
+    args.push(output);
+    return args;
+}
+
+// Upload a single file for multi-file tools (like the merger) in web mode
+app.post('/api/upload', async (req, res) => {
+    const originalName = req.query.name || 'archivo';
+    const fileId = crypto.randomUUID();
+    const ext = path.extname(originalName).slice(0, 10);
+    fs.mkdirSync(uploadsFolder, { recursive: true });
+    const targetPath = path.join(uploadsFolder, `${fileId}${ext}`);
+    try {
+        await new Promise((resolve, reject) => {
+            const out = fs.createWriteStream(targetPath);
+            req.pipe(out);
+            out.on('finish', resolve);
+            out.on('error', reject);
+            req.on('error', reject);
+        });
+        res.json({ fileId, name: originalName, path: targetPath });
+    } catch (e) {
+        fs.rm(targetPath, { force: true }, () => {});
+        res.status(500).json({ error: 'No se pudo subir el archivo.' });
+    }
+});
+
+// Merges multiple files: JSON body with { paths, files, names, outputType, totalDuration }
+app.post('/api/merge', async (req, res) => {
+    const { paths: localPaths, files: uploadedFileIds, names = [], outputType = 'video', totalDuration } = req.body || {};
+    const isAudioOnly = outputType === 'audio';
+    const inputs = [];
+    const tempFilesToDelete = [];
+
+    if (Array.isArray(localPaths) && localPaths.length >= 2) {
+        if (!config.desktopApp) {
+            return res.status(400).json({ error: 'Rutas locales solo permitidas en la app de escritorio.' });
+        }
+        for (let i = 0; i < localPaths.length; i++) {
+            const p = localPaths[i];
+            if (!fs.existsSync(p)) return res.status(400).json({ error: `No se encuentra el archivo: ${path.basename(p)}` });
+            const meta = await probeMedia(p);
+            inputs.push({
+                path: p,
+                name: names[i] || path.basename(p),
+                hasVideo: meta.hasVideo,
+                hasAudio: meta.hasAudio,
+                duration: meta.duration
+            });
+        }
+    } else if (Array.isArray(uploadedFileIds) && uploadedFileIds.length >= 2) {
+        for (let i = 0; i < uploadedFileIds.length; i++) {
+            const item = uploadedFileIds[i];
+            const fileId = typeof item === 'object' ? item.fileId : item;
+            const originalName = (typeof item === 'object' ? item.name : names[i]) || 'archivo';
+            const ext = path.extname(originalName).slice(0, 10);
+            const filePath = path.join(uploadsFolder, `${fileId}${ext}`);
+            if (!fs.existsSync(filePath)) {
+                return res.status(400).json({ error: `Falta el archivo subido: ${originalName}` });
+            }
+            tempFilesToDelete.push(filePath);
+            const meta = await probeMedia(filePath);
+            inputs.push({
+                path: filePath,
+                name: originalName,
+                hasVideo: meta.hasVideo,
+                hasAudio: meta.hasAudio,
+                duration: meta.duration
+            });
+        }
+    } else {
+        return res.status(400).json({ error: 'Debes proporcionar al menos 2 archivos para combinar.' });
+    }
+
+    const firstInputName = inputs[0].name || 'archivo';
+    const baseName = path.basename(firstInputName, path.extname(firstInputName)) || 'archivo';
+    const outExt = isAudioOnly ? 'mp3' : 'mp4';
+    const job = newJob();
+    res.json({ jobId: job.id });
+
+    (async () => {
+        try {
+            fs.mkdirSync(config.downloadsFolder, { recursive: true });
+            const output = uniqueOutputPath(config.downloadsFolder, baseName, outExt, 'combinado');
+            const args = mergeArgs({ inputs, output, isAudioOnly });
+            job.status = 'processing';
+            job.percent = 0;
+            console.log(`Merging ${inputs.length} files into ${path.basename(output)} (${outputType})`);
+
+            let expectedDuration = Number(totalDuration);
+            if (!Number.isFinite(expectedDuration) || expectedDuration <= 0) {
+                expectedDuration = inputs.reduce((sum, inp) => sum + (inp.duration || 0), 0) || null;
+            }
+
+            await runFfmpeg(args, job, expectedDuration);
+
+            const filename = path.basename(output);
+            job.percent = 100;
+            job.result = {
+                success: true,
+                message: isAudioOnly
+                    ? `Audio combinado (${inputs.length} pistas) guardado con éxito.`
+                    : `Vídeo combinado (${inputs.length} clips) guardado con éxito.`,
+                filename,
+                downloadUrl: `/api/file?name=${encodeURIComponent(filename)}`
+            };
+            job.status = 'done';
+        } catch (error) {
+            console.error('Merge error:', error.message);
+            job.error = 'No se pudieron combinar los archivos seleccionados. Comprueba que sean audios o vídeos válidos.';
+            job.status = 'error';
+        } finally {
+            for (const tempPath of tempFilesToDelete) {
+                fs.rm(tempPath, { force: true }, () => {});
+            }
             setTimeout(() => jobs.delete(job.id), JOB_TTL_MS);
         }
     })();
