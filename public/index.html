@@ -244,16 +244,30 @@
             <div class="glass-panel speed-panel">
                 <label id="speed-drop" class="file-drop" for="speed-file">
                     <i class="fa-solid fa-gauge-high"></i>
-                    <span class="file-drop-title">Elige un vídeo o audio</span>
-                    <span class="file-drop-hint">MP4, MOV, MKV, WEBM, MP3, M4A, WAV…</span>
-                    <input type="file" id="speed-file" accept="video/*,audio/*">
+                    <span class="file-drop-title">Elige uno o varios vídeos o audios</span>
+                    <span class="file-drop-hint">MP4, MOV, MKV, WEBM, MP3, M4A, WAV… (puedes elegir varios)</span>
+                    <input type="file" id="speed-file" accept="video/*,audio/*" multiple>
                 </label>
 
                 <div id="speed-editor" class="speed-editor hidden">
-                    <div class="trim-file-row">
-                        <i class="fa-regular fa-file-video" id="speed-file-icon"></i>
-                        <span id="speed-file-name" class="trim-file-name"></span>
-                        <button type="button" id="speed-change-file" class="link-btn">Cambiar</button>
+                    <div class="speed-batch-toolbar" id="speed-batch-toolbar">
+                        <div class="speed-batch-summary">
+                            <span class="merge-count-badge" id="speed-count-badge">1 archivo</span>
+                            <span class="speed-batch-active-name" id="speed-file-name"></span>
+                        </div>
+                        <div class="speed-batch-actions">
+                            <label for="speed-add-file" class="merge-add-btn" title="Añadir más vídeos o audios">
+                                <i class="fa-solid fa-plus"></i> Añadir más
+                                <input type="file" id="speed-add-file" accept="video/*,audio/*" multiple class="hidden-input">
+                            </label>
+                            <button type="button" id="speed-clear-btn" class="merge-clear-btn" title="Limpiar y elegir otros archivos">
+                                <i class="fa-regular fa-trash-can"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="speed-files-list" class="speed-files-list hidden">
+                        <!-- Dynamic list of files when multiple are loaded -->
                     </div>
 
                     <div class="media-frame" id="speed-media-frame">

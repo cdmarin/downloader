@@ -30,11 +30,24 @@ class WebBridge(private val activity: MainActivity) {
             JSONObject().put("error", "Error al preparar el recorte.").toString()
         }
 
-    /** Changes speed of the file last picked in the page (speed.js); progress is read with [getProgress]. */
+    /** Changes speed of the file(s) picked in the page (speed.js); progress is read with [getProgress]. */
     @JavascriptInterface
     fun startSpeed(payload: String): String =
         try {
-            DownloadEngine.startSpeed(activity, activity.pickedFileUri, JSONObject(payload)).toString()
+            val json = JSONObject(payload)
+            val names = mutableListOf<String>()
+            val filesArr = json.optJSONArray("files")
+            if (filesArr != null) {
+                for (i in 0 until filesArr.length()) {
+                    names.add(filesArr.getString(i))
+                }
+            }
+            val uris = if (names.isNotEmpty()) {
+                activity.resolvePickedUris(names)
+            } else {
+                listOfNotNull(activity.pickedFileUri)
+            }
+            DownloadEngine.startSpeed(activity, uris, json).toString()
         } catch (e: Exception) {
             Log.e("ClipSaver", "Could not start speed change", e)
             JSONObject().put("error", "Error al preparar el cambio de velocidad.").toString()

@@ -583,8 +583,128 @@ function speedArgs({ input, output, speed, hasVideo, inputExt }) {
     return args;
 }
 
-// Body: raw file (browser) or nothing (desktop app, which passes ?path=)
+// Body: raw file (browser), JSON with { files, paths, speed } (batch), or nothing (desktop app, which passes ?path=)
 app.post('/api/speed', async (req, res) => {
+    // 1. Batch speed change (multiple files)
+    const isBatch = req.body && (Array.isArray(req.body.files) || Array.isArray(req.body.paths));
+    if (isBatch) {
+        const { files: uploadedFileIds, paths: localPaths, names = [] } = req.body;
+        const speed = parseFloat(req.body.speed) || 1.0;
+        if (speed <= 0.1 || speed > 16.0) {
+            return res.status(400).json({ error: 'Velocidad no válida.' });
+        }
+
+        const items = [];
+        const tempFilesToDelete = [];
+
+        if (Array.isArray(localPaths) && localPaths.length > 0) {
+            if (!config.desktopApp) {
+                return res.status(400).json({ error: 'Rutas locales solo permitidas en la app de escritorio.' });
+            }
+            for (let i = 0; i < localPaths.length; i++) {
+                const p = localPaths[i];
+                if (!fs.existsSync(p)) return res.status(400).json({ error: `No se encuentra el archivo: ${path.basename(p)}` });
+                const meta = await probeMedia(p);
+                items.push({
+                    input: p,
+                    name: names[i] || path.basename(p),
+                    hasVideo: meta.hasVideo,
+                    duration: meta.duration
+                });
+            }
+        } else if (Array.isArray(uploadedFileIds) && uploadedFileIds.length > 0) {
+            for (let i = 0; i < uploadedFileIds.length; i++) {
+                const item = uploadedFileIds[i];
+                const fileId = typeof item === 'object' ? item.fileId : item;
+                const originalName = (typeof item === 'object' ? item.name : names[i]) || 'archivo';
+                const ext = path.extname(originalName).slice(0, 10);
+                const filePath = path.join(uploadsFolder, `${fileId}${ext}`);
+                if (!fs.existsSync(filePath)) {
+                    return res.status(400).json({ error: `Falta el archivo subido: ${originalName}` });
+                }
+                tempFilesToDelete.push(filePath);
+                const meta = await probeMedia(filePath);
+                items.push({
+                    input: filePath,
+                    name: originalName,
+                    hasVideo: meta.hasVideo,
+                    duration: meta.duration
+                });
+            }
+        } else {
+            return res.status(400).json({ error: 'Debes proporcionar al menos un archivo.' });
+        }
+
+        const job = newJob();
+        res.json({ jobId: job.id });
+
+        (async () => {
+            const results = [];
+            const speedLabel = speed % 1 === 0 ? `${speed}x` : `${speed}x`;
+            fs.mkdirSync(config.downloadsFolder, { recursive: true });
+
+            try {
+                job.status = 'processing';
+                job.percent = 0;
+
+                for (let i = 0; i < items.length; i++) {
+                    const it = items[i];
+                    const safeName = path.basename(String(it.name || 'archivo'));
+                    const inputExt = path.extname(safeName).slice(1).toLowerCase();
+                    const baseName = path.basename(safeName, path.extname(safeName)) || 'archivo';
+                    const output = uniqueOutputPath(config.downloadsFolder, baseName, trimOutputExt(it.hasVideo, inputExt), speedLabel);
+                    const args = speedArgs({ input: it.input, output, speed, hasVideo: it.hasVideo, inputExt });
+
+                    console.log(`[Batch ${i + 1}/${items.length}] Changing speed of ${safeName} to ${speed}x`);
+
+                    const expectedDuration = Number.isFinite(it.duration) && it.duration > 0 ? it.duration / speed : null;
+
+                    const basePercent = (i / items.length) * 100;
+                    const subJob = {
+                        set percent(p) {
+                            if (p !== null && Number.isFinite(p)) {
+                                job.percent = Math.min(100, basePercent + (p / items.length));
+                            }
+                        }
+                    };
+
+                    await runFfmpeg(args, subJob, expectedDuration);
+
+                    const filename = path.basename(output);
+                    results.push({
+                        filename,
+                        downloadUrl: `/api/file?name=${encodeURIComponent(filename)}`,
+                        hasVideo: it.hasVideo
+                    });
+                }
+
+                job.percent = 100;
+                job.result = {
+                    success: true,
+                    message: items.length === 1
+                        ? `Archivo modificado a ${speedLabel} con éxito.`
+                        : `${items.length} archivos modificados a ${speedLabel} con éxito.`,
+                    filename: results[0].filename,
+                    downloadUrl: results[0].downloadUrl,
+                    files: results,
+                    count: items.length
+                };
+                job.status = 'done';
+            } catch (error) {
+                console.error('Batch speed change error:', error.message);
+                job.error = 'No se pudo cambiar la velocidad de los archivos. Comprueba que sean audios o vídeos válidos.';
+                job.status = 'error';
+            } finally {
+                for (const tempPath of tempFilesToDelete) {
+                    fs.rm(tempPath, { force: true }, () => {});
+                }
+                setTimeout(() => jobs.delete(job.id), JOB_TTL_MS);
+            }
+        })();
+        return;
+    }
+
+    // 2. Single file speed change (query params / raw stream)
     const { name, path: localPath } = req.query;
     const hasVideo = req.query.hasVideo === '1';
     const speed = parseFloat(req.query.speed) || 1.0;

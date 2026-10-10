@@ -2355,3 +2355,177 @@ footer p {
         justify-content: center;
     }
 }
+
+/* ===== Batch Speed Changer Styles ===== */
+.speed-batch-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    padding: 0.65rem 0.95rem;
+}
+
+.speed-batch-summary {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    min-width: 0;
+    flex: 1;
+}
+
+.speed-batch-active-name {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.speed-batch-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.speed-files-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-height: 240px;
+    overflow-y: auto;
+    padding-right: 0.25rem;
+}
+
+.speed-files-list.hidden {
+    display: none;
+}
+
+.speed-file-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 0.85rem;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--glass-border);
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.speed-file-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(99, 102, 241, 0.3);
+}
+
+.speed-file-item.active {
+    background: rgba(99, 102, 241, 0.15);
+    border-color: var(--accent-1);
+    box-shadow: 0 0 10px rgba(99, 102, 241, 0.25);
+}
+
+.speed-file-item-icon {
+    font-size: 1.15rem;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    width: 20px;
+    text-align: center;
+}
+
+.speed-file-item.active .speed-file-item-icon {
+    color: var(--accent-1);
+}
+
+.speed-file-item-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.speed-file-item-name {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.speed-file-item-meta {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.speed-file-item-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-shrink: 0;
+}
+
+.speed-file-remove-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    border: 1px solid var(--glass-border);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    padding: 0;
+}
+
+.speed-file-remove-btn:hover {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.4);
+    color: #f87171;
+}
+
+.speed-batch-result-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.8rem;
+    width: 100%;
+    max-height: 280px;
+    overflow-y: auto;
+}
+
+.speed-batch-result-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.55rem 0.85rem;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+}
+
+.speed-batch-result-name {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+}
+
+.speed-batch-result-btns {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-shrink: 0;
+}

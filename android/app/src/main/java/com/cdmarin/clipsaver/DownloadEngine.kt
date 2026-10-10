@@ -514,9 +514,9 @@ object DownloadEngine {
         return args
     }
 
-    /** Changes speed of [source] (the file picked in the page) by payload.speed. */
-    fun startSpeed(context: Context, source: Uri?, payload: JSONObject): JSONObject {
-        if (source == null) {
+    /** Changes speed of [sources] (the file(s) picked in the page) by payload.speed. */
+    fun startSpeed(context: Context, sources: List<Uri>, payload: JSONObject): JSONObject {
+        if (sources.isEmpty()) {
             return JSONObject().put("error", "Vuelve a elegir el archivo.")
         }
         val speed = payload.optDouble("speed", 1.0)
@@ -528,24 +528,27 @@ object DownloadEngine {
 
         val job = Job(UUID.randomUUID().toString(), isAudio = !hasVideo, trimmed = false, isSpeedJob = true)
         jobs[job.id] = job
-        Log.i(TAG, "Changing speed for $source to ${speed}x")
+        Log.i(TAG, "Changing speed for ${sources.size} file(s) to ${speed}x")
 
         val appContext = context.applicationContext
         DownloadService.start(appContext)
         executor.execute {
-            val expectedDuration = mediaDuration?.let { it / speed }
-            runSpeed(appContext, job, source, speed, hasVideo, expectedDuration)
+            runSpeed(appContext, job, sources, speed, hasVideo, mediaDuration)
         }
         return JSONObject().put("jobId", job.id)
     }
 
+    /** Compatibility helper for single Uri callers. */
+    fun startSpeed(context: Context, source: Uri?, payload: JSONObject): JSONObject =
+        startSpeed(context, listOfNotNull(source), payload)
+
     private fun runSpeed(
         context: Context,
         job: Job,
-        source: Uri,
+        sources: List<Uri>,
         speed: Double,
-        hasVideo: Boolean,
-        expectedDuration: Double?
+        hasVideoHint: Boolean,
+        mediaDuration: Double?
     ) {
         val jobDir = File(context.noBackupFilesDir, "jobs/${job.id}")
         try {
@@ -553,35 +556,84 @@ object DownloadEngine {
             initError?.let { throw EngineInitException(it) }
             jobDir.mkdirs()
 
-            // FFmpeg needs a real file, so the picked document is copied first
-            val displayName = displayName(context, source)?.replace('/', '_') ?: "archivo"
-            val inputExt = displayName.substringAfterLast('.', "").lowercase(Locale.ROOT).take(10)
-            val input = File(jobDir, if (inputExt.isEmpty()) "input" else "input.$inputExt")
-            val stream = context.contentResolver.openInputStream(source) ?: throw IOException("Could not open $source")
-            stream.use { inp -> input.outputStream().use { inp.copyTo(it) } }
-
-            val baseName = (if ('.' in displayName) displayName.substringBeforeLast('.') else displayName)
-                .ifBlank { "archivo" }
-            val ext = trimOutputExt(hasVideo, inputExt)
-            val speedLabel = if (speed % 1.0 == 0.0) "${speed.toLong()}x" else "${speed}x"
-            val output = File(jobDir, "$baseName ($speedLabel).$ext")
             synchronized(job) {
                 job.status = "processing"
                 job.percent = 0.0
             }
-            runFfmpeg(context, speedArgs(input, output, speed, hasVideo, inputExt), job, expectedDuration)
 
-            val mimeType = mimeTypeFor(output, !hasVideo)
-            val uri = saveToDownloads(context, output, mimeType)
-            val what = if (hasVideo) "Vídeo" else "Audio"
+            val speedLabel = if (speed % 1.0 == 0.0) "${speed.toLong()}x" else "${speed}x"
+            var firstOutputUri: Uri? = null
+            var firstOutputName: String? = null
+            val totalFiles = sources.size
+
+            for ((index, source) in sources.withIndex()) {
+                val displayName = displayName(context, source)?.replace('/', '_') ?: "archivo_$index"
+                val inputExt = displayName.substringAfterLast('.', "").lowercase(Locale.ROOT).take(10)
+                val input = File(jobDir, "input_$index" + if (inputExt.isEmpty()) "" else ".$inputExt")
+                val stream = context.contentResolver.openInputStream(source)
+                    ?: throw IOException("Could not open $source")
+                stream.use { inp -> input.outputStream().use { inp.copyTo(it) } }
+
+                var hasVideo = hasVideoHint
+                var durationSec: Double? = null
+                try {
+                    val mmr = MediaMetadataRetriever()
+                    mmr.setDataSource(input.absolutePath)
+                    hasVideo = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_VIDEO) != null
+                    val durMs = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
+                    if (durMs != null && durMs > 0) durationSec = durMs / 1000.0
+                    mmr.release()
+                } catch (ignored: Throwable) {}
+
+                val baseName = (if ('.' in displayName) displayName.substringBeforeLast('.') else displayName)
+                    .ifBlank { "archivo" }
+                val ext = trimOutputExt(hasVideo, inputExt)
+                val output = File(jobDir, "$baseName ($speedLabel).$ext")
+
+                val basePercent = (index.toDouble() / totalFiles) * 100.0
+                val expectedDuration = (durationSec ?: mediaDuration)?.let { it / speed }
+
+                val subJob = Job(UUID.randomUUID().toString(), isAudio = !hasVideo, trimmed = false)
+                val monitor = thread(name = "speed-progress-$index") {
+                    while (subJob.status != "done" && subJob.status != "error") {
+                        val p = synchronized(subJob) { subJob.percent }
+                        if (p != null) {
+                            synchronized(job) {
+                                job.percent = (basePercent + (p / totalFiles)).coerceIn(0.0, 100.0)
+                            }
+                        }
+                        try { Thread.sleep(200) } catch (e: InterruptedException) { break }
+                    }
+                }
+
+                try {
+                    runFfmpeg(context, speedArgs(input, output, speed, hasVideo, inputExt), subJob, expectedDuration)
+                } finally {
+                    monitor.interrupt()
+                }
+
+                val mimeType = mimeTypeFor(output, !hasVideo)
+                val uri = saveToDownloads(context, output, mimeType)
+                if (firstOutputUri == null) {
+                    firstOutputUri = uri
+                    firstOutputName = output.name
+                }
+            }
+
+            val message = if (totalFiles == 1) {
+                "Archivo modificado a $speedLabel con éxito. Guardado en Descargas/$DOWNLOADS_SUBFOLDER."
+            } else {
+                "$totalFiles archivos modificados a $speedLabel con éxito. Guardados en Descargas/$DOWNLOADS_SUBFOLDER."
+            }
+
             synchronized(job) {
-                job.fileUri = uri
-                job.mimeType = mimeType
+                job.fileUri = firstOutputUri
                 job.percent = 100.0
                 job.result = JSONObject()
                     .put("success", true)
-                    .put("message", "$what modificado a $speedLabel con éxito. Guardado en Descargas/$DOWNLOADS_SUBFOLDER.")
-                    .put("filename", output.name)
+                    .put("message", message)
+                    .put("filename", firstOutputName.orEmpty())
+                    .put("count", totalFiles)
                     .put("jobId", job.id)
                 job.status = "done"
             }
@@ -591,7 +643,7 @@ object DownloadEngine {
                 job.error = if (e is EngineInitException) {
                     "No se pudo iniciar FFmpeg. Prueba a reinstalar la app."
                 } else {
-                    "No se pudo cambiar la velocidad del archivo. Comprueba que sea un audio o vídeo válido."
+                    "No se pudo cambiar la velocidad de los archivos. Comprueba que sean audios o vídeos válidos."
                 }
                 job.status = "error"
             }
